@@ -1,0 +1,15 @@
+{
+  "name": "openclaw-setup-server",
+  "version": "1.0.0",
+  "description": "Setup wizard for OpenClaw GCP deployment",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

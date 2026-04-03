@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenClaw Setup</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="page">
+
+    <!-- ── Header ──────────────────────────────────────────────────────── -->
+    <header class="header">
+      <div class="header-inner">
+        <span class="logo">🦞 OpenClaw</span>
+        <span class="badge" id="status-badge">Checking...</span>
+      </div>
+    </header>
+
+    <!-- ── Main card ────────────────────────────────────────────────────── -->
+    <main class="card-wrap">
+
+      <!-- Loading screen -->
+      <div id="screen-loading" class="screen active">
+        <div class="spinner"></div>
+        <p class="hint">Connecting to your OpenClaw instance…</p>
+      </div>
+
+      <!-- Step 1: Telegram -->
+      <div id="screen-telegram" class="screen">
+
+        <div class="step-header">
+          <div class="step-pill">Step 1 of 1</div>
+          <h1>Connect Telegram</h1>
+          <p class="subtitle">
+            OpenClaw uses a Telegram bot to receive your messages and reply with
+            AI-powered responses. You'll create a private bot in under a minute.
+          </p>
+        </div>
+
+        <div class="instructions">
+          <h3>How to get your bot token</h3>
+          <ol>
+            <li>Open Telegram and search for <strong>@BotFather</strong> (blue tick ✓)</li>
+            <li>Tap <strong>Start</strong>, then send the command <code>/newbot</code></li>
+            <li>Choose a display name — e.g. <em>My Claw Agent</em></li>
+            <li>Choose a username ending in <em>bot</em> — e.g. <em>myclawagent_bot</em></li>
+            <li>BotFather replies with your token — copy it (looks like <code>123456789:ABCdef…</code>)</li>
+          </ol>
+        </div>
+
+        <div class="field-group">
+          <label for="telegram-token">Paste your bot token</label>
+          <div class="input-row">
+            <input
+              id="telegram-token"
+              type="text"
+              placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="btn-telegram" class="btn btn-primary" onclick="submitTelegram()">
+              Connect →
+            </button>
+          </div>
+          <p id="telegram-error" class="field-error hidden"></p>
+        </div>
+
+      </div>
+
+      <!-- Done screen -->
+      <div id="screen-done" class="screen">
+
+        <div class="done-icon">✅</div>
+        <h1>You're all set!</h1>
+        <p class="subtitle">
+          OpenClaw is running with Vertex AI (Gemini) as the brain and your
+          Telegram bot connected.
+        </p>
+
+        <a id="dashboard-link" href="#" target="_blank" class="btn btn-primary btn-large">
+          Open OpenClaw Dashboard →
+        </a>
+
+        <div class="next-steps">
+          <h3>What's next</h3>
+          <ul>
+            <li>
+              <strong>Connect Google (Drive, Gmail, Calendar)</strong><br/>
+              Open the dashboard → <em>Skills</em> → <em>gog</em> → Authorise with Google.
+            </li>
+            <li>
+              <strong>Message your bot on Telegram</strong><br/>
+              The first message from any new user triggers a pairing code —
+              approve it in the dashboard under <em>Access</em>.
+            </li>
+            <li>
+              <strong>Explore skills</strong><br/>
+              Summarise, search with DuckDuckGo, manage files and more — all
+              from the dashboard's <em>Skills</em> tab.
+            </li>
+          </ul>
+        </div>
+
+      </div>
+
+    </main>
+
+    <footer class="footer">
+      Powered by <a href="https://openclaw.ai" target="_blank">OpenClaw</a>
+      &nbsp;·&nbsp;
+      LLM: Gemini 3.1 Pro via Vertex AI
+    </footer>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

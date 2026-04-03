@@ -1,0 +1,5 @@
+node_modules/
+setup-server/node_modules/
+setup-server/.env
+.DS_Store
+*.log
