@@ -23,14 +23,15 @@ That's it. Everything else is automated.
 
 ## Deploy
 
-Click the button below. It opens Google Cloud Shell (a browser-based terminal) and runs the deploy script automatically.
+Click the button below. It opens Google Cloud Shell (a browser-based terminal) and loads the deploy instructions.
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/iliasacademia/openclaw-gcp-deploy&tutorial=cloudshell_tutorial.md&shellonly=true&open_in_editor=deploy.sh)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/iliasacademia/openclaw-gcp-deploy&tutorial=cloudshell_tutorial.md&shellonly=true)
 
-> **Note:** After clicking, Cloud Shell will open and clone this repo. Run the script with:
-> ```bash
-> bash deploy.sh
-> ```
+Once Cloud Shell opens, type this command and press Enter:
+```bash
+bash deploy.sh
+```
+Then sit back — it takes about 4 minutes and asks no questions.
 
 ---
 

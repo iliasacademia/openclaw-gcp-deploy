@@ -2,6 +2,7 @@
 
 const express = require('express');
 const fs      = require('fs');
+const os      = require('os');
 const path    = require('path');
 const { execSync } = require('child_process');
 
@@ -28,7 +29,12 @@ function readConfig() {
 }
 
 function writeConfig(config) {
-  fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(config, null, 2), 'utf8');
+  // Atomic write: write to temp file in same directory, then rename.
+  // This prevents OpenClaw's hot-reload from reading a half-written file.
+  const dir  = path.dirname(OPENCLAW_CONFIG);
+  const tmp  = path.join(dir, `.openclaw.json.tmp.${process.pid}`);
+  fs.writeFileSync(tmp, JSON.stringify(config, null, 2), 'utf8');
+  fs.renameSync(tmp, OPENCLAW_CONFIG);
 }
 
 function isOpenclawRunning() {

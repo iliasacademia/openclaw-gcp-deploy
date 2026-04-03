@@ -57,7 +57,8 @@ success "Repo: ${DIM}${REPO_URL}${NC}"
 # ── Create GCP project ───────────────────────────────────────────────────────
 header "Creating GCP project"
 
-SUFFIX=$(od -A n -t u4 -N 2 /dev/urandom | tr -d ' ' | tail -c 4)
+RANDOM_NUM=$(od -A n -t u2 -N 2 /dev/urandom | tr -d ' ')
+SUFFIX=$(printf '%04d' $((RANDOM_NUM % 10000)))
 PROJECT_ID="my-first-claw-${SUFFIX}"
 PROJECT_NAME="My First Claw Agent"
 
@@ -72,7 +73,8 @@ gcloud config set project "$PROJECT_ID" --quiet
 
 gcloud billing projects link "$PROJECT_ID" \
   --billing-account="$BILLING_ACCOUNT" \
-  --quiet
+  --quiet \
+  || die "Could not link billing to the project.\n\n  This usually means the free trial is not fully activated.\n  Visit: ${BLUE}https://console.cloud.google.com/billing${NC}\n  Make sure your billing account is active, then re-run this script."
 
 success "Project created and billing linked"
 
@@ -162,9 +164,9 @@ log "Installing Node.js 24 + OpenClaw on the VM (~3 minutes)..."
 SETUP_URL="http://${VM_IP}:8080/health"
 READY=false
 
-for i in $(seq 1 36); do
-  printf "\r  ${DIM}Attempt %d/36 — checking http://%s:8080 ...${NC}" "$i" "$VM_IP"
-  if curl -sf --max-time 3 "$SETUP_URL" >/dev/null 2>&1; then
+for i in $(seq 1 60); do
+  printf "\r  ${DIM}Attempt %d/60 — checking http://%s:8080 ...${NC}" "$i" "$VM_IP"
+  if curl -sf --max-time 5 "$SETUP_URL" >/dev/null 2>&1; then
     READY=true
     break
   fi

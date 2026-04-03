@@ -50,7 +50,12 @@ useradd -r -m -d /home/openclaw -s /bin/bash openclaw 2>/dev/null || true
 
 # ── Install OpenClaw ─────────────────────────────────────────────────────────
 echo "--- Installing OpenClaw ---"
-npm install -g openclaw@latest || fail "npm install openclaw failed"
+for attempt in 1 2 3; do
+  npm install -g openclaw@latest && break
+  echo "npm install openclaw failed (attempt ${attempt}/3), retrying in 15s..."
+  sleep 15
+done
+command -v openclaw >/dev/null || fail "openclaw not found after 3 install attempts"
 
 # Detect actual binary path (npm may install to /usr/bin, /usr/local/bin, etc.)
 OPENCLAW_BIN=$(command -v openclaw || true)
@@ -123,7 +128,14 @@ if [ ! -d /opt/openclaw-deploy/setup-server ]; then
 fi
 
 cd /opt/openclaw-deploy/setup-server
-npm install --omit=dev || fail "npm install for setup-server failed"
+for attempt in 1 2 3; do
+  npm install --omit=dev && break
+  echo "npm install for setup-server failed (attempt ${attempt}/3), retrying in 10s..."
+  sleep 10
+done
+if [ ! -d /opt/openclaw-deploy/setup-server/node_modules ]; then
+  fail "setup-server node_modules missing after 3 install attempts"
+fi
 
 # Runtime env for the setup server
 cat > /opt/openclaw-deploy/setup-server/.env << SENV
@@ -136,19 +148,23 @@ SENV
 chown -R openclaw:openclaw /opt/openclaw-deploy
 
 # ── Detect the right openclaw start command ──────────────────────────────────
-# OpenClaw may use `openclaw start`, `openclaw gateway`, or need onboarding.
-# We test which subcommand exists by checking help output.
+# IMPORTANT: We must NOT run `openclaw start --help` because some CLIs ignore
+# unknown flags and actually execute the subcommand, which would hang this script.
+# Instead, inspect the top-level help text for available subcommands.
 echo "--- Detecting OpenClaw start command ---"
-OPENCLAW_CMD="${OPENCLAW_BIN} start"
+OPENCLAW_HELP=$("${OPENCLAW_BIN}" --help 2>&1 || true)
+OPENCLAW_CMD="${OPENCLAW_BIN} start"  # default fallback
 
-if "${OPENCLAW_BIN}" start --help >/dev/null 2>&1; then
+if echo "$OPENCLAW_HELP" | grep -qw "start"; then
   OPENCLAW_CMD="${OPENCLAW_BIN} start"
-  echo "Using: ${OPENCLAW_CMD}"
-elif "${OPENCLAW_BIN}" gateway --help >/dev/null 2>&1; then
+  echo "Detected subcommand 'start' — using: ${OPENCLAW_CMD}"
+elif echo "$OPENCLAW_HELP" | grep -qw "gateway"; then
   OPENCLAW_CMD="${OPENCLAW_BIN} gateway"
-  echo "Using: ${OPENCLAW_CMD}"
+  echo "Detected subcommand 'gateway' — using: ${OPENCLAW_CMD}"
 else
-  echo "WARN: Could not detect start command, defaulting to: ${OPENCLAW_CMD}"
+  echo "WARN: Could not detect start command from help output, defaulting to: ${OPENCLAW_CMD}"
+  echo "      Available help output:"
+  echo "$OPENCLAW_HELP" | head -20
   echo "      If OpenClaw fails to start, SSH in and run: openclaw onboard --install-daemon"
 fi
 
