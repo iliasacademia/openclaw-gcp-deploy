@@ -1,5 +1,10 @@
 'use strict';
 
+// ── Setup token from URL ──────────────────────────────────────────────────────
+// deploy.sh generates a random token and embeds it in the URL it prints.
+// All API calls include this token. Without it, the server rejects requests.
+const SETUP_TOKEN = new URLSearchParams(window.location.search).get('token') || '';
+
 // ── Screen manager ────────────────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -15,13 +20,34 @@ function setBadge(text, cls) {
   b.className   = 'badge ' + (cls || '');
 }
 
+// ── API helper — always includes the setup token ─────────────────────────────
+async function api(path, options = {}) {
+  const sep = path.includes('?') ? '&' : '?';
+  const url = `${path}${sep}token=${encodeURIComponent(SETUP_TOKEN)}`;
+  return fetch(url, options);
+}
+
 // ── Bootstrap: check current status on load ───────────────────────────────────
 async function init() {
+  // If no token in URL, show unauthorized screen
+  if (!SETUP_TOKEN) {
+    showScreen('screen-unauthorized');
+    setBadge('No token', 'error');
+    return;
+  }
+
   showScreen('screen-loading');
   setBadge('Connecting…', 'starting');
 
   try {
-    const res  = await fetch('/api/status');
+    const res  = await api('/api/status');
+
+    if (res.status === 403) {
+      showScreen('screen-unauthorized');
+      setBadge('Unauthorized', 'error');
+      return;
+    }
+
     const data = await res.json();
 
     if (data.openclawRunning) {
@@ -77,7 +103,7 @@ async function submitTelegram() {
   btn.textContent = 'Connecting…';
 
   try {
-    const res  = await fetch('/api/telegram', {
+    const res  = await api('/api/telegram', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ token }),

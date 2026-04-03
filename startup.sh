@@ -20,7 +20,8 @@ fail() { echo "FATAL: $*"; exit 1; }
 META="http://metadata.google.internal/computeMetadata/v1"
 GH()  { curl -sf -H "Metadata-Flavor: Google" "$META/$1"; }
 
-REPO_URL=$(GH "instance/attributes/repo-url"   || echo "")
+REPO_URL=$(GH "instance/attributes/repo-url"       || echo "")
+SETUP_TOKEN=$(GH "instance/attributes/setup-token" || echo "")
 VM_IP=$(GH   "instance/network-interfaces/0/access-configs/0/external-ip")
 PROJECT_ID=$(GH "project/project-id")
 ZONE=$(GH    "instance/zone" | awk -F'/' '{print $NF}')
@@ -142,6 +143,7 @@ cat > /opt/openclaw-deploy/setup-server/.env << SENV
 VM_IP=${VM_IP}
 PROJECT_ID=${PROJECT_ID}
 OPENCLAW_CONFIG=/home/openclaw/.openclaw/openclaw.json
+SETUP_TOKEN=${SETUP_TOKEN}
 PORT=8080
 SENV
 

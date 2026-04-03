@@ -2,7 +2,6 @@
 
 const express = require('express');
 const fs      = require('fs');
-const os      = require('os');
 const path    = require('path');
 const { execSync } = require('child_process');
 
@@ -10,6 +9,7 @@ const { execSync } = require('child_process');
 const PORT           = parseInt(process.env.PORT           || '8080');
 const VM_IP          = process.env.VM_IP                   || 'localhost';
 const PROJECT_ID     = process.env.PROJECT_ID              || '';
+const SETUP_TOKEN    = process.env.SETUP_TOKEN             || '';
 const OPENCLAW_CONFIG = process.env.OPENCLAW_CONFIG        || '/home/openclaw/.openclaw/openclaw.json';
 const DASHBOARD_URL  = `http://${VM_IP}:18789`;
 
@@ -17,6 +17,23 @@ const DASHBOARD_URL  = `http://${VM_IP}:18789`;
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ── Auth middleware ──────────────────────────────────────────────────────────
+// All /api/* routes require the single-use setup token.
+// The token is generated at deploy time and embedded in the URL given to the user.
+// /health stays unauthenticated so deploy.sh can poll it.
+
+function requireToken(req, res, next) {
+  if (!SETUP_TOKEN) {
+    // No token configured — allow all (dev/fallback mode)
+    return next();
+  }
+  const provided = req.query.token || req.headers['x-setup-token'] || '';
+  if (provided === SETUP_TOKEN) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Invalid or missing setup token.' });
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,13 +82,13 @@ function validateTelegramToken(token) {
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
-// Health check — deploy.sh polls this to know the VM is ready
+// Health check — deploy.sh polls this (NO auth required)
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', vm_ip: VM_IP, project_id: PROJECT_ID });
 });
 
-// Current setup status
-app.get('/api/status', (_req, res) => {
+// Current setup status (auth required)
+app.get('/api/status', requireToken, (_req, res) => {
   const config = readConfig();
   const telegramEnabled = !!(
     config.channels?.telegram?.enabled &&
@@ -87,8 +104,8 @@ app.get('/api/status', (_req, res) => {
   });
 });
 
-// Save Telegram bot token
-app.post('/api/telegram', (req, res) => {
+// Save Telegram bot token (auth required)
+app.post('/api/telegram', requireToken, (req, res) => {
   const token = (req.body?.token || '').trim();
 
   if (!validateTelegramToken(token)) {
@@ -122,4 +139,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`VM IP      : ${VM_IP}`);
   console.log(`Dashboard  : ${DASHBOARD_URL}`);
   console.log(`Config     : ${OPENCLAW_CONFIG}`);
+  console.log(`Auth       : ${SETUP_TOKEN ? 'token required' : 'OPEN (no token set)'}`);
 });

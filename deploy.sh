@@ -54,6 +54,9 @@ if [ -z "$REPO_URL" ]; then
 fi
 success "Repo: ${DIM}${REPO_URL}${NC}"
 
+# ── Generate single-use setup token ──────────────────────────────────────────
+SETUP_TOKEN=$(od -A n -t x1 -N 16 /dev/urandom | tr -d ' \n')
+
 # ── Create GCP project ───────────────────────────────────────────────────────
 header "Creating GCP project"
 
@@ -68,8 +71,6 @@ log "Project ID   : ${PROJECT_ID}"
 gcloud projects create "$PROJECT_ID" \
   --name="$PROJECT_NAME" \
   --quiet || die "Failed to create project. You may have hit the project quota limit."
-
-gcloud config set project "$PROJECT_ID" --quiet
 
 gcloud billing projects link "$PROJECT_ID" \
   --billing-account="$BILLING_ACCOUNT" \
@@ -88,6 +89,7 @@ gcloud services enable \
   iam.googleapis.com \
   iamcredentials.googleapis.com \
   cloudresourcemanager.googleapis.com \
+  --project="$PROJECT_ID" \
   --quiet
 
 log "Waiting 60 seconds for APIs to propagate..."
@@ -98,7 +100,7 @@ done
 echo ""
 success "APIs enabled"
 
-# ── Create VM ────────────────────────────────────────────────────────────────
+# ── Create VM (with retry for API propagation) ───────────────────────────────
 header "Creating VM"
 
 VM_NAME="openclaw-vm"
@@ -109,20 +111,36 @@ log "OS           : Debian 13 (trixie)"
 log "Disk         : 10 GB"
 log "Zone         : ${ZONE}"
 
-gcloud compute instances create "$VM_NAME" \
-  --zone="$ZONE" \
-  --machine-type="n2-standard-2" \
-  --image-family="debian-13" \
-  --image-project="debian-cloud" \
-  --boot-disk-size="10GB" \
-  --boot-disk-type="pd-balanced" \
-  --tags="openclaw" \
-  --scopes="cloud-platform" \
-  --metadata="repo-url=${REPO_URL}" \
-  --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh" \
-  --quiet
+VM_CREATED=false
+for attempt in 1 2 3; do
+  if gcloud compute instances create "$VM_NAME" \
+    --project="$PROJECT_ID" \
+    --zone="$ZONE" \
+    --machine-type="n2-standard-2" \
+    --image-family="debian-13" \
+    --image-project="debian-cloud" \
+    --boot-disk-size="10GB" \
+    --boot-disk-type="pd-balanced" \
+    --tags="openclaw" \
+    --scopes="cloud-platform" \
+    --metadata="repo-url=${REPO_URL},setup-token=${SETUP_TOKEN}" \
+    --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh" \
+    --quiet 2>&1; then
+    VM_CREATED=true
+    break
+  fi
+  if [ "$attempt" -lt 3 ]; then
+    warn "VM creation failed (attempt ${attempt}/3). API may still be propagating. Retrying in 30s..."
+    sleep 30
+  fi
+done
+
+if [ "$VM_CREATED" = false ]; then
+  die "Could not create VM after 3 attempts.\n  The Compute Engine API may not be ready yet. Wait a minute and re-run the script."
+fi
 
 VM_IP=$(gcloud compute instances describe "$VM_NAME" \
+  --project="$PROJECT_ID" \
   --zone="$ZONE" \
   --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
 
@@ -145,6 +163,7 @@ success "Vertex AI User role granted to VM service account (ADC)"
 header "Opening ports"
 
 gcloud compute firewall-rules create allow-openclaw \
+  --project="$PROJECT_ID" \
   --direction=INGRESS \
   --priority=1000 \
   --network=default \
@@ -175,6 +194,8 @@ done
 echo ""
 
 # ── Done ─────────────────────────────────────────────────────────────────────
+SETUP_LINK="http://${VM_IP}:8080?token=${SETUP_TOKEN}"
+
 echo ""
 echo -e "${GREEN}${BOLD}┌─────────────────────────────────────────────────┐${NC}"
 echo -e "${GREEN}${BOLD}│         ✅  OpenClaw deployed!                  │${NC}"
@@ -183,11 +204,11 @@ echo ""
 
 if [ "$READY" = true ]; then
   echo -e "  👉  Complete setup at:"
-  echo -e "      ${BLUE}${BOLD}http://${VM_IP}:8080${NC}"
+  echo -e "      ${BLUE}${BOLD}${SETUP_LINK}${NC}"
 else
   warn "Setup server is still starting up."
   echo -e "  👉  Try this URL in ~1 minute:"
-  echo -e "      ${BLUE}${BOLD}http://${VM_IP}:8080${NC}"
+  echo -e "      ${BLUE}${BOLD}${SETUP_LINK}${NC}"
 fi
 
 echo ""
