@@ -57,7 +57,7 @@ success "Repo: ${DIM}${REPO_URL}${NC}"
 # ── Create GCP project ───────────────────────────────────────────────────────
 header "Creating GCP project"
 
-SUFFIX=$(cat /dev/urandom | tr -dc '0-9' | head -c 4 2>/dev/null || od -A n -t d -N 2 /dev/urandom | tr -d ' ' | head -c 4)
+SUFFIX=$(od -A n -t u4 -N 2 /dev/urandom | tr -d ' ' | tail -c 4)
 PROJECT_ID="my-first-claw-${SUFFIX}"
 PROJECT_NAME="My First Claw Agent"
 
@@ -66,7 +66,7 @@ log "Project ID   : ${PROJECT_ID}"
 
 gcloud projects create "$PROJECT_ID" \
   --name="$PROJECT_NAME" \
-  --quiet 2>/dev/null || die "Failed to create project. You may have hit the project quota limit."
+  --quiet || die "Failed to create project. You may have hit the project quota limit."
 
 gcloud config set project "$PROJECT_ID" --quiet
 
@@ -135,7 +135,7 @@ SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA}" \
   --role="roles/aiplatform.user" \
-  --quiet 2>/dev/null
+  --quiet
 
 success "Vertex AI User role granted to VM service account (ADC)"
 

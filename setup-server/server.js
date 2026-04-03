@@ -51,8 +51,10 @@ function restartOpenclaw() {
 }
 
 function validateTelegramToken(token) {
-  // Telegram bot tokens have the format:  <numeric_id>:<alphanumeric_string>
-  return typeof token === 'string' && /^\d{8,12}:[A-Za-z0-9_-]{35,}$/.test(token.trim());
+  // Telegram bot tokens: <numeric_bot_id>:<alphanumeric_secret>
+  // Bot IDs range from ~6 digits (old bots) to 12+ digits (new bots).
+  // Secret part is typically 35 chars but can vary.
+  return typeof token === 'string' && /^\d{4,15}:[A-Za-z0-9_-]{20,}$/.test(token.trim());
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────

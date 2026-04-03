@@ -3,12 +3,18 @@
 # OpenClaw VM Startup Script
 # Runs automatically on first boot via GCP startup-script metadata.
 # Installs Node.js 24, OpenClaw, and the setup wizard server.
+#
+# NOTE: We intentionally do NOT use `set -e` here. A startup script that dies
+# on the first transient apt/npm error leaves the user with a broken VM and
+# zero diagnostics. Instead, each critical step checks its own exit code and
+# either retries or logs a clear message.
 # =============================================================================
-set -euo pipefail
 
 # Log everything to a file for debugging
 exec > >(tee /var/log/openclaw-startup.log) 2>&1
 echo "=== OpenClaw Startup: $(date) ==="
+
+fail() { echo "FATAL: $*"; exit 1; }
 
 # ── Read GCP instance metadata ───────────────────────────────────────────────
 META="http://metadata.google.internal/computeMetadata/v1"
@@ -25,13 +31,17 @@ echo "REPO_URL=${REPO_URL}"
 
 # ── System packages ──────────────────────────────────────────────────────────
 echo "--- Installing system packages ---"
-apt-get update -qq
-apt-get install -y -qq curl git ca-certificates gnupg
+for attempt in 1 2 3; do
+  apt-get update -qq && break
+  echo "apt-get update failed (attempt ${attempt}/3), retrying in 10s..."
+  sleep 10
+done
+apt-get install -y -qq curl git ca-certificates gnupg || fail "Could not install base packages"
 
 # ── Node.js 24 via NodeSource ────────────────────────────────────────────────
 echo "--- Installing Node.js 24 ---"
-curl -fsSL https://deb.nodesource.com/setup_24.x | bash - >/dev/null 2>&1
-apt-get install -y -qq nodejs
+curl -fsSL https://deb.nodesource.com/setup_24.x | bash - || fail "NodeSource setup failed"
+apt-get install -y -qq nodejs || fail "Could not install Node.js"
 echo "Node.js $(node --version)  npm $(npm --version)"
 
 # ── OpenClaw system user ──────────────────────────────────────────────────────
@@ -40,8 +50,21 @@ useradd -r -m -d /home/openclaw -s /bin/bash openclaw 2>/dev/null || true
 
 # ── Install OpenClaw ─────────────────────────────────────────────────────────
 echo "--- Installing OpenClaw ---"
-npm install -g openclaw@latest --quiet
-echo "OpenClaw installed: $(openclaw --version 2>/dev/null || echo 'ok')"
+npm install -g openclaw@latest || fail "npm install openclaw failed"
+
+# Detect actual binary path (npm may install to /usr/bin, /usr/local/bin, etc.)
+OPENCLAW_BIN=$(command -v openclaw || true)
+NODE_BIN=$(command -v node || true)
+
+if [ -z "$OPENCLAW_BIN" ]; then
+  fail "openclaw binary not found in PATH after install"
+fi
+if [ -z "$NODE_BIN" ]; then
+  fail "node binary not found in PATH after install"
+fi
+echo "OpenClaw binary: ${OPENCLAW_BIN}"
+echo "Node binary:     ${NODE_BIN}"
+echo "OpenClaw version: $(openclaw --version 2>/dev/null || echo 'unknown')"
 
 # ── OpenClaw config ───────────────────────────────────────────────────────────
 echo "--- Writing OpenClaw config ---"
@@ -84,15 +107,23 @@ chmod 0440 /etc/sudoers.d/openclaw
 
 # ── Setup wizard server ───────────────────────────────────────────────────────
 echo "--- Cloning deploy repo for setup server ---"
-if [ -n "$REPO_URL" ]; then
-  git clone "$REPO_URL" /opt/openclaw-deploy --depth=1 --quiet
-else
-  echo "WARN: No repo URL in metadata — setup server will not be available."
-  exit 0
+if [ -z "$REPO_URL" ]; then
+  fail "No repo URL in metadata — setup server cannot be installed."
+fi
+
+for attempt in 1 2 3; do
+  git clone "$REPO_URL" /opt/openclaw-deploy --depth=1 --quiet && break
+  echo "git clone failed (attempt ${attempt}/3), retrying in 10s..."
+  rm -rf /opt/openclaw-deploy
+  sleep 10
+done
+
+if [ ! -d /opt/openclaw-deploy/setup-server ]; then
+  fail "setup-server directory not found after clone"
 fi
 
 cd /opt/openclaw-deploy/setup-server
-npm install --omit=dev --quiet
+npm install --omit=dev || fail "npm install for setup-server failed"
 
 # Runtime env for the setup server
 cat > /opt/openclaw-deploy/setup-server/.env << SENV
@@ -104,8 +135,25 @@ SENV
 
 chown -R openclaw:openclaw /opt/openclaw-deploy
 
+# ── Detect the right openclaw start command ──────────────────────────────────
+# OpenClaw may use `openclaw start`, `openclaw gateway`, or need onboarding.
+# We test which subcommand exists by checking help output.
+echo "--- Detecting OpenClaw start command ---"
+OPENCLAW_CMD="${OPENCLAW_BIN} start"
+
+if "${OPENCLAW_BIN}" start --help >/dev/null 2>&1; then
+  OPENCLAW_CMD="${OPENCLAW_BIN} start"
+  echo "Using: ${OPENCLAW_CMD}"
+elif "${OPENCLAW_BIN}" gateway --help >/dev/null 2>&1; then
+  OPENCLAW_CMD="${OPENCLAW_BIN} gateway"
+  echo "Using: ${OPENCLAW_CMD}"
+else
+  echo "WARN: Could not detect start command, defaulting to: ${OPENCLAW_CMD}"
+  echo "      If OpenClaw fails to start, SSH in and run: openclaw onboard --install-daemon"
+fi
+
 # ── systemd: openclaw.service ─────────────────────────────────────────────────
-cat > /etc/systemd/system/openclaw.service << 'SVC'
+cat > /etc/systemd/system/openclaw.service << SVC
 [Unit]
 Description=OpenClaw Gateway
 After=network-online.target
@@ -114,7 +162,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=openclaw
-ExecStart=/usr/bin/openclaw start
+ExecStart=${OPENCLAW_CMD}
 Restart=on-failure
 RestartSec=10
 WorkingDirectory=/home/openclaw
@@ -125,7 +173,7 @@ WantedBy=multi-user.target
 SVC
 
 # ── systemd: openclaw-setup.service ──────────────────────────────────────────
-cat > /etc/systemd/system/openclaw-setup.service << 'SVC'
+cat > /etc/systemd/system/openclaw-setup.service << SVC
 [Unit]
 Description=OpenClaw Setup Wizard
 After=network-online.target
@@ -134,7 +182,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=openclaw
-ExecStart=/usr/bin/node /opt/openclaw-deploy/setup-server/server.js
+ExecStart=${NODE_BIN} /opt/openclaw-deploy/setup-server/server.js
 Restart=on-failure
 RestartSec=5
 WorkingDirectory=/opt/openclaw-deploy/setup-server
@@ -147,8 +195,18 @@ SVC
 # ── Start services ────────────────────────────────────────────────────────────
 systemctl daemon-reload
 systemctl enable openclaw.service openclaw-setup.service
-systemctl start openclaw.service
+
+# Start setup server first — it's the health check target
 systemctl start openclaw-setup.service
+echo "Setup server started: http://${VM_IP}:8080"
+
+# Start OpenClaw (may take a moment; don't block on it)
+systemctl start openclaw.service
+if systemctl is-active --quiet openclaw.service; then
+  echo "OpenClaw service started successfully"
+else
+  echo "WARN: OpenClaw service may still be starting. Check: journalctl -u openclaw -f"
+fi
 
 echo "=== Startup complete: $(date) ==="
 echo "Setup wizard: http://${VM_IP}:8080"
