@@ -72,10 +72,15 @@ gcloud projects create "$PROJECT_ID" \
   --name="$PROJECT_NAME" \
   --quiet || die "Failed to create project. You may have hit the project quota limit."
 
-gcloud billing projects link "$PROJECT_ID" \
+BILLING_LINK_ERR=$(gcloud billing projects link "$PROJECT_ID" \
   --billing-account="$BILLING_ACCOUNT" \
-  --quiet \
-  || die "Could not link billing to the project.\n\n  This usually means the free trial is not fully activated.\n  Visit: ${BLUE}https://console.cloud.google.com/billing${NC}\n  Make sure your billing account is active, then re-run this script."
+  --quiet 2>&1) || {
+  if echo "$BILLING_LINK_ERR" | grep -q "billing quota exceeded"; then
+    die "GCP billing quota exceeded — you have too many projects linked to your billing account.\n\n  Fix:\n  1. Go to ${BLUE}https://console.cloud.google.com/cloud-resource-manager${NC}\n  2. Delete any empty 'my-first-claw-*' projects from previous failed runs\n  3. Wait 5 minutes, then re-run this script."
+  else
+    die "Could not link billing to the project.\n\n  This usually means the free trial is not fully activated.\n  Visit: ${BLUE}https://console.cloud.google.com/billing${NC}\n  Make sure your billing account is active, then re-run this script.\n\n  Details: ${BILLING_LINK_ERR}"
+  fi
+}
 
 success "Project created and billing linked"
 
