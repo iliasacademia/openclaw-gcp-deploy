@@ -104,19 +104,32 @@ success "APIs enabled"
 header "Creating VM"
 
 VM_NAME="openclaw-vm"
-ZONE="us-central1-a"
+MACHINE_TYPE="n2-standard-2"
 
-log "Machine type : n2-standard-2 (2 vCPU, 8 GB RAM)"
+# Try multiple zones in order — n2 availability varies across zones
+ZONES=(
+  "us-central1-a"
+  "us-central1-b"
+  "us-central1-c"
+  "us-central1-f"
+  "us-east1-b"
+  "us-east1-c"
+  "us-west1-a"
+  "us-west1-b"
+)
+
+log "Machine type : ${MACHINE_TYPE} (2 vCPU, 8 GB RAM)"
 log "OS           : Debian 13 (trixie)"
 log "Disk         : 10 GB"
-log "Zone         : ${ZONE}"
 
 VM_CREATED=false
-for attempt in 1 2 3; do
+ZONE=""
+for z in "${ZONES[@]}"; do
+  log "Trying zone: ${z}..."
   if gcloud compute instances create "$VM_NAME" \
     --project="$PROJECT_ID" \
-    --zone="$ZONE" \
-    --machine-type="n2-standard-2" \
+    --zone="$z" \
+    --machine-type="$MACHINE_TYPE" \
     --image-family="debian-13" \
     --image-project="debian-cloud" \
     --boot-disk-size="10GB" \
@@ -127,16 +140,14 @@ for attempt in 1 2 3; do
     --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh" \
     --quiet 2>&1; then
     VM_CREATED=true
+    ZONE="$z"
     break
   fi
-  if [ "$attempt" -lt 3 ]; then
-    warn "VM creation failed (attempt ${attempt}/3). API may still be propagating. Retrying in 30s..."
-    sleep 30
-  fi
+  warn "Zone ${z} unavailable, trying next..."
 done
 
 if [ "$VM_CREATED" = false ]; then
-  die "Could not create VM after 3 attempts.\n  The Compute Engine API may not be ready yet. Wait a minute and re-run the script."
+  die "Could not create VM in any zone. This is usually a temporary GCP capacity issue.\n  Wait a few minutes and re-run the script."
 fi
 
 VM_IP=$(gcloud compute instances describe "$VM_NAME" \
