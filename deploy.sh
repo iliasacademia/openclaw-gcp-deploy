@@ -57,8 +57,22 @@ success "Repo: ${DIM}${REPO_URL}${NC}"
 # ── Generate single-use setup token ──────────────────────────────────────────
 SETUP_TOKEN=$(od -A n -t x1 -N 16 /dev/urandom | tr -d ' \n')
 
-# ── Create GCP project ───────────────────────────────────────────────────────
+# ── Clean up any leftover failed projects ────────────────────────────────────
 header "Creating GCP project"
+
+STALE_PROJECTS=$(gcloud projects list \
+  --filter="projectId:my-first-claw-*" \
+  --format="value(projectId)" 2>/dev/null || true)
+
+if [ -n "$STALE_PROJECTS" ]; then
+  warn "Found leftover project(s) from a previous failed run:"
+  echo "$STALE_PROJECTS" | while read -r pid; do
+    warn "  Deleting ${pid}..."
+    gcloud projects delete "$pid" --quiet 2>/dev/null || true
+  done
+  log "Waiting 10 seconds for deletions to register..."
+  sleep 10
+fi
 
 RANDOM_NUM=$(od -A n -t u2 -N 2 /dev/urandom | tr -d ' ')
 SUFFIX=$(printf '%04d' $((RANDOM_NUM % 10000)))
