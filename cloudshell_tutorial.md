@@ -1,6 +1,6 @@
 # 🦞 Deploy OpenClaw to GCP
 
-This will deploy OpenClaw on a new GCP VM in about **4 minutes**.
+This will deploy OpenClaw on a new GCP VM in about **5 minutes**.
 
 **What happens automatically:**
 - A new GCP project is created ("My First Claw Agent")
@@ -21,4 +21,6 @@ bash deploy.sh
 
 ---
 
-When it finishes, you'll see a URL like `http://YOUR_IP:8080` — open it to complete setup.
+When it finishes, you'll see a URL like `http://YOUR_IP:8080?token=...` — open it to complete setup. The token in the URL is single-use; bookmark or copy the full URL.
+
+If the script reports the wizard didn't respond in time, wait 1-2 minutes and try the URL anyway — the VM is usually still finishing the OpenClaw install.

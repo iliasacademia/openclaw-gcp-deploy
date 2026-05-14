@@ -301,3 +301,92 @@ input[type="text"].error  { border-color: var(--red); }
   h1 { font-size: 1.5rem; }
   .card-wrap { margin: 24px auto; }
 }
+
+/* ── Diagnostics ─────────────────────────────────────────────────────────────── */
+.diagnostics-link {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.diagnostics-link a { color: var(--accent); text-decoration: none; }
+.diagnostics-link a:hover { text-decoration: underline; }
+
+#screen-diagnostics .step-header { text-align: left; margin-bottom: 20px; }
+
+.alert {
+  background: rgba(247, 95, 95, 0.1);
+  border: 1px solid var(--red);
+  color: var(--red);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.diag-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+@media (max-width: 520px) {
+  .diag-grid { grid-template-columns: 1fr; }
+}
+.diag-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+.diag-card h3 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.diag-content {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+.diag-details {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.diag-details summary {
+  padding: 12px 14px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  user-select: none;
+}
+.diag-details summary:hover { background: rgba(255,255,255,0.03); }
+.diag-details pre {
+  padding: 0 14px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  overflow-x: auto;
+  max-height: 320px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diag-actions { display: flex; gap: 12px; margin-top: 16px; }
+.diag-actions .btn { flex: 0; }
+.btn-secondary {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { background: var(--surface); }

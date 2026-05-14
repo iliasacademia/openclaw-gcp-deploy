@@ -10,7 +10,6 @@
 
   <div class="page">
 
-    <!-- ── Header ──────────────────────────────────────────────────────── -->
     <header class="header">
       <div class="header-inner">
         <span class="logo">🦞 OpenClaw</span>
@@ -18,7 +17,6 @@
       </div>
     </header>
 
-    <!-- ── Main card ────────────────────────────────────────────────────── -->
     <main class="card-wrap">
 
       <!-- Loading screen -->
@@ -34,8 +32,9 @@
           <div class="step-pill">Step 1 of 1</div>
           <h1>Connect Telegram</h1>
           <p class="subtitle">
-            OpenClaw uses a Telegram bot to receive your messages and reply with
-            AI-powered responses. You'll create a private bot in under a minute.
+            OpenClaw uses a Telegram bot to receive your messages and reply
+            with AI-powered responses. You'll create a private bot in under
+            a minute.
           </p>
         </div>
 
@@ -67,28 +66,32 @@
           <p id="telegram-error" class="field-error hidden"></p>
         </div>
 
+        <p class="diagnostics-link">
+          Something looks wrong? <a href="#" onclick="showDiagnostics(event)">Show diagnostics</a>
+        </p>
+
       </div>
 
-      <!-- Unauthorized screen -->
+      <!-- Unauthorized -->
       <div id="screen-unauthorized" class="screen">
         <div class="step-header" style="text-align: center;">
           <h1>Access Denied</h1>
           <p class="subtitle">
             This setup page requires a valid token.<br/>
-            Please use the URL printed by the deploy script in Cloud Shell.
+            Use the URL printed by the deploy script in Cloud Shell.
             It looks like: <code>http://IP:8080?token=abc123...</code>
           </p>
         </div>
       </div>
 
-      <!-- Done screen -->
+      <!-- Done -->
       <div id="screen-done" class="screen">
 
         <div class="done-icon">✅</div>
         <h1>You're all set!</h1>
         <p class="subtitle">
-          OpenClaw is running with Vertex AI (Gemini) as the brain and your
-          Telegram bot connected.
+          OpenClaw is running with Vertex AI (Gemini) and your Telegram bot
+          is connected.
         </p>
 
         <a id="dashboard-link" href="#" target="_blank" class="btn btn-primary btn-large">
@@ -99,22 +102,72 @@
           <h3>What's next</h3>
           <ul>
             <li>
-              <strong>Connect Google (Drive, Gmail, Calendar)</strong><br/>
-              Open the dashboard → <em>Skills</em> → <em>gog</em> → Authorise with Google.
-            </li>
-            <li>
               <strong>Message your bot on Telegram</strong><br/>
-              The first message from any new user triggers a pairing code —
+              The first message from a new sender triggers a pairing code —
               approve it in the dashboard under <em>Access</em>.
             </li>
             <li>
+              <strong>Connect Google (Drive, Gmail, Calendar)</strong><br/>
+              Open the dashboard → <em>Skills</em> → <em>gog</em> → authorise.
+            </li>
+            <li>
               <strong>Explore skills</strong><br/>
-              Summarise, search with DuckDuckGo, manage files and more — all
-              from the dashboard's <em>Skills</em> tab.
+              Summarise, search, manage files and more — all from the
+              dashboard's <em>Skills</em> tab.
             </li>
           </ul>
         </div>
 
+        <p class="diagnostics-link">
+          <a href="#" onclick="showDiagnostics(event)">Show diagnostics</a>
+        </p>
+
+      </div>
+
+      <!-- Diagnostics / troubleshooting -->
+      <div id="screen-diagnostics" class="screen">
+        <div class="step-header">
+          <h1>Diagnostics</h1>
+          <p class="subtitle">Live status from your VM. Share this with support if needed.</p>
+        </div>
+
+        <div id="diag-failure" class="alert hidden"></div>
+
+        <div class="diag-grid">
+          <div class="diag-card">
+            <h3>Gateway service</h3>
+            <div id="diag-gateway" class="diag-content">—</div>
+          </div>
+          <div class="diag-card">
+            <h3>VM</h3>
+            <div id="diag-vm" class="diag-content">—</div>
+          </div>
+        </div>
+
+        <details class="diag-details" open>
+          <summary>Gateway logs</summary>
+          <pre id="diag-log-gateway">—</pre>
+        </details>
+
+        <details class="diag-details">
+          <summary>VM startup log</summary>
+          <pre id="diag-log-startup">—</pre>
+        </details>
+
+        <details class="diag-details">
+          <summary>Setup wizard log</summary>
+          <pre id="diag-log-setup">—</pre>
+        </details>
+
+        <details class="diag-details">
+          <summary>Effective config (secrets redacted)</summary>
+          <pre id="diag-config">—</pre>
+        </details>
+
+        <div class="diag-actions">
+          <button class="btn" onclick="loadDiagnostics()">Refresh</button>
+          <button class="btn btn-secondary" onclick="hideDiagnostics()">Back</button>
+        </div>
       </div>
 
     </main>

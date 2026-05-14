@@ -1,6 +1,6 @@
 # 🦞 OpenClaw — One-Click GCP Deploy
 
-Deploy [OpenClaw](https://openclaw.ai) on Google Cloud in ~4 minutes with a single button click. No terminal experience needed.
+Deploy [OpenClaw](https://openclaw.ai) on Google Cloud in ~5 minutes with a single button click. No terminal experience needed.
 
 **What you get:**
 - OpenClaw running on a dedicated GCP VM
@@ -23,15 +23,17 @@ That's it. Everything else is automated.
 
 ## Deploy
 
-Click the button below. It opens Google Cloud Shell (a browser-based terminal) and loads the deploy instructions.
+Click the button below. It opens Google Cloud Shell (a browser-based terminal) with this repo cloned and a tutorial pane.
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/iliasacademia/openclaw-gcp-deploy&tutorial=cloudshell_tutorial.md&shellonly=true)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/iliasacademia/openclaw-gcp-deploy&tutorial=cloudshell_tutorial.md)
 
-Once Cloud Shell opens, type this command and press Enter:
+Then in the Cloud Shell terminal type:
+
 ```bash
 bash deploy.sh
 ```
-Then sit back — it takes about 4 minutes and asks no questions.
+
+Sit back — it takes about 5 minutes and asks no questions.
 
 ---
 
@@ -40,24 +42,27 @@ Then sit back — it takes about 4 minutes and asks no questions.
 | Step | What happens |
 |------|-------------|
 | 1 | Creates a new GCP project called **My First Claw Agent** |
-| 2 | Enables Compute Engine + Vertex AI APIs |
-| 3 | Creates a VM (Debian 13, n2-standard-2, us-central1) |
-| 4 | Grants the VM automatic access to Vertex AI (no keys needed) |
+| 2 | Enables Compute Engine + Vertex AI + IAM APIs |
+| 3 | Creates a dedicated service account with **only** Vertex AI access (least privilege) |
+| 4 | Creates a VM (Debian 13, n2-standard-2, 20 GB disk) — tries 8 zones for capacity |
 | 5 | Opens firewall ports for the dashboard and setup wizard |
 | 6 | Installs Node.js 24 + OpenClaw on the VM |
-| 7 | Starts OpenClaw and the setup wizard |
-| 8 | Prints your setup URL |
+| 7 | Validates the OpenClaw config before starting the gateway |
+| 8 | Starts OpenClaw + the setup wizard |
+| 9 | Prints your setup URL |
 
-**Total time: ~4 minutes.**
+**Total time: ~5 minutes.**
 
 ---
 
 ## After deploy
 
-1. Visit the setup wizard URL printed at the end (e.g. `http://YOUR_IP:8080`)
+1. Visit the setup wizard URL printed at the end (e.g. `http://YOUR_IP:8080?token=...`)
 2. Follow the one-step wizard to connect your Telegram bot
-3. You'll be redirected to the OpenClaw dashboard
+3. Click "Open OpenClaw Dashboard" — the link includes your gateway token
 4. From the dashboard, connect Google (Drive, Gmail, Calendar) via the **gog** skill
+
+The dashboard token is the only thing protecting your gateway — bookmark the link with the token included, and don't share it.
 
 ---
 
@@ -79,10 +84,11 @@ To avoid charges after testing, stop or delete the VM from the [GCP Console](htt
 openclaw-gcp-deploy/
 ├── deploy.sh              # Main script — runs in Cloud Shell
 ├── startup.sh             # Runs on VM at first boot
+├── cloudshell_tutorial.md # Tutorial shown in the Cloud Shell pane
 └── setup-server/
     ├── server.js          # Express setup wizard (port 8080)
     ├── package.json
-    └── public/            # Setup wizard UI
+    └── public/            # Setup wizard UI (incl. diagnostics)
 ```
 
 ---
@@ -90,13 +96,23 @@ openclaw-gcp-deploy/
 ## Troubleshooting
 
 **Setup wizard not loading?**
-The VM needs ~4 minutes to install everything. Wait and refresh.
+The VM needs ~5 minutes to install everything. The deploy script polls for 10 minutes — if it times out, wait 1-2 more minutes and refresh.
+
+**Wizard loads but says "Boot failed" or shows diagnostics?**
+The diagnostics panel surfaces the failure reason and the last lines of every relevant log (VM startup, gateway service, setup wizard). Share that output if you open an issue.
 
 **"No billing account" error?**
 Activate your free trial at https://console.cloud.google.com/freetrial first.
 
 **OpenClaw dashboard unreachable?**
-SSH into the VM and check: `sudo journalctl -u openclaw -f`
+SSH into the VM and check:
+```bash
+sudo journalctl -u openclaw-gateway -f
+sudo tail -100 /var/log/openclaw-startup.log
+```
+
+**"Billing quota exceeded"?**
+GCP limits projects per billing account. The deploy script tries to auto-clean stale `my-first-claw-*` projects, but you can permanently delete them at [Resource Manager](https://console.cloud.google.com/cloud-resource-manager).
 
 ---
 

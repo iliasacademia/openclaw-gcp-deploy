@@ -1,5 +1,6 @@
 node_modules/
 setup-server/node_modules/
+setup-server/package-lock.json
 setup-server/.env
 .DS_Store
 *.log

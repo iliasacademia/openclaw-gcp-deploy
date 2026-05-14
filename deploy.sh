@@ -28,8 +28,19 @@ cat << 'EOF'
        |_|                          GCP Deploy
 EOF
 echo -e "${NC}"
-echo -e "  This script will deploy OpenClaw on Google Cloud (~4 minutes)."
+echo -e "  Deploying OpenClaw on Google Cloud (~5 minutes)."
 echo -e "  ${DIM}No configuration needed — just sit back.${NC}\n"
+
+# ── Locate repo and find startup.sh ──────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "${SCRIPT_DIR}/startup.sh" ] \
+  || die "startup.sh not found next to deploy.sh — run this from the cloned repo."
+
+REPO_URL=$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null \
+  | sed 's/\.git$//' \
+  | sed 's|git@github.com:|https://github.com/|' || true)
+[ -n "$REPO_URL" ] \
+  || die "Could not determine repo URL. Run this from inside the cloned repository."
 
 # ── Prerequisite: billing ────────────────────────────────────────────────────
 header "Checking prerequisites"
@@ -38,64 +49,53 @@ BILLING_ACCOUNT=$(gcloud billing accounts list \
   --format="value(name)" --filter="open=true" 2>/dev/null | head -1 || true)
 
 if [ -z "$BILLING_ACCOUNT" ]; then
-  die "No active billing account found.\n\n  Please activate your free trial at:\n  ${BLUE}https://console.cloud.google.com/billing${NC}\n\n  Then re-run this script."
+  die "No active billing account found.\n\n  Activate your free trial at:\n  ${BLUE}https://console.cloud.google.com/billing${NC}\n\n  Then re-run this script."
 fi
-success "Billing account found: ${DIM}${BILLING_ACCOUNT}${NC}"
-
-# ── Derive repo URL from git remote ──────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_URL=$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null \
-  | sed 's/\.git$//' \
-  | sed 's|git@github.com:|https://github.com/|' \
-  || true)
-
-if [ -z "$REPO_URL" ]; then
-  die "Could not determine repo URL.\n  Please run from inside the cloned repository."
-fi
+success "Billing account: ${DIM}${BILLING_ACCOUNT}${NC}"
 success "Repo: ${DIM}${REPO_URL}${NC}"
 
-# ── Generate single-use setup token ──────────────────────────────────────────
-SETUP_TOKEN=$(od -A n -t x1 -N 16 /dev/urandom | tr -d ' \n')
+# ── Single-use tokens ────────────────────────────────────────────────────────
+# Two distinct tokens: SETUP_TOKEN gates the setup wizard, GATEWAY_TOKEN gates
+# the OpenClaw dashboard. Generated here so we can print URLs at the end.
+gen_token() { head -c 24 /dev/urandom | base64 | tr -d '+/=' | head -c 32; }
+SETUP_TOKEN=$(gen_token)
+GATEWAY_TOKEN=$(gen_token)
 
-# ── Clean up any leftover failed projects ────────────────────────────────────
+# ── Clean up stale projects from previous failed runs ────────────────────────
 header "Creating GCP project"
 
-STALE_PROJECTS=$(gcloud projects list \
-  --filter="projectId:my-first-claw-*" \
+STALE=$(gcloud projects list \
+  --filter="projectId:my-first-claw-* AND lifecycleState:ACTIVE" \
   --format="value(projectId)" 2>/dev/null || true)
 
-if [ -n "$STALE_PROJECTS" ]; then
-  warn "Found leftover project(s) from a previous failed run:"
-  echo "$STALE_PROJECTS" | while read -r pid; do
-    warn "  Deleting ${pid}..."
+if [ -n "$STALE" ]; then
+  warn "Cleaning up project(s) from previous runs:"
+  echo "$STALE" | while read -r pid; do
+    [ -z "$pid" ] && continue
+    warn "  deleting ${pid}..."
     gcloud projects delete "$pid" --quiet 2>/dev/null || true
   done
-  log "Waiting 10 seconds for deletions to register..."
-  sleep 10
+  log "Waiting 15s for deletions to register..."
+  sleep 15
 fi
 
-RANDOM_NUM=$(od -A n -t u2 -N 2 /dev/urandom | tr -d ' ')
-SUFFIX=$(printf '%04d' $((RANDOM_NUM % 10000)))
+SUFFIX=$(printf '%04d' $((RANDOM % 10000)))
 PROJECT_ID="my-first-claw-${SUFFIX}"
 PROJECT_NAME="My First Claw Agent"
 
 log "Project name : ${PROJECT_NAME}"
 log "Project ID   : ${PROJECT_ID}"
 
-gcloud projects create "$PROJECT_ID" \
-  --name="$PROJECT_NAME" \
-  --quiet || die "Failed to create project. You may have hit the project quota limit."
+gcloud projects create "$PROJECT_ID" --name="$PROJECT_NAME" --quiet \
+  || die "Failed to create project — you may have hit the GCP project quota.\n\n  Fix:\n  1. Open ${BLUE}https://console.cloud.google.com/cloud-resource-manager${NC}\n  2. Permanently delete any pending-deletion 'my-first-claw-*' projects\n  3. Re-run this script."
 
-BILLING_LINK_ERR=$(gcloud billing projects link "$PROJECT_ID" \
-  --billing-account="$BILLING_ACCOUNT" \
-  --quiet 2>&1) || {
-  if echo "$BILLING_LINK_ERR" | grep -q "billing quota exceeded"; then
-    die "GCP billing quota exceeded — you have too many projects linked to your billing account.\n\n  Fix:\n  1. Go to ${BLUE}https://console.cloud.google.com/cloud-resource-manager${NC}\n  2. Delete any empty 'my-first-claw-*' projects from previous failed runs\n  3. Wait 5 minutes, then re-run this script."
-  else
-    die "Could not link billing to the project.\n\n  This usually means the free trial is not fully activated.\n  Visit: ${BLUE}https://console.cloud.google.com/billing${NC}\n  Make sure your billing account is active, then re-run this script.\n\n  Details: ${BILLING_LINK_ERR}"
+BILLING_ERR=$(gcloud billing projects link "$PROJECT_ID" \
+  --billing-account="$BILLING_ACCOUNT" --quiet 2>&1) || {
+  if echo "$BILLING_ERR" | grep -q "billing quota exceeded"; then
+    die "GCP billing quota exceeded.\n\n  Fix:\n  1. Open ${BLUE}https://console.cloud.google.com/cloud-resource-manager${NC}\n  2. Permanently delete any pending-deletion projects\n  3. Wait ~5 minutes, then re-run this script."
   fi
+  die "Could not link billing.\n  ${BILLING_ERR}"
 }
-
 success "Project created and billing linked"
 
 # ── Enable APIs ──────────────────────────────────────────────────────────────
@@ -108,86 +108,83 @@ gcloud services enable \
   iam.googleapis.com \
   iamcredentials.googleapis.com \
   cloudresourcemanager.googleapis.com \
-  --project="$PROJECT_ID" \
-  --quiet
+  --project="$PROJECT_ID" --quiet
 
-log "Waiting 60 seconds for APIs to propagate..."
+# APIs need ~30-60s to fully propagate before dependent operations work.
+log "Waiting 60s for API propagation..."
 for i in $(seq 1 60); do
-  printf "\r  ${DIM}[%02d/60]${NC}" "$i"
-  sleep 1
+  printf "\r  ${DIM}[%02d/60]${NC}" "$i"; sleep 1
 done
 echo ""
 success "APIs enabled"
 
-# ── Create VM (with retry for API propagation) ───────────────────────────────
+# ── Dedicated service account for the VM ─────────────────────────────────────
+# Using a dedicated SA avoids the default Compute Engine SA, which newer GCP
+# projects may not auto-create (or may not auto-grant Editor to). Also lets us
+# scope the VM to *only* aiplatform.user — least privilege.
+header "Creating VM service account"
+
+VM_SA_NAME="openclaw-vm"
+VM_SA="${VM_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+
+gcloud iam service-accounts create "$VM_SA_NAME" \
+  --display-name="OpenClaw VM service account" \
+  --project="$PROJECT_ID" --quiet \
+  || die "Could not create service account ${VM_SA_NAME}"
+
+# SA creation can take a few seconds to be visible to IAM bindings.
+for i in 1 2 3 4 5; do
+  if gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+       --member="serviceAccount:${VM_SA}" \
+       --role="roles/aiplatform.user" \
+       --quiet >/dev/null 2>&1; then
+    break
+  fi
+  log "IAM binding attempt ${i}/5 — waiting for SA propagation..."
+  sleep 5
+done
+success "Granted aiplatform.user to ${DIM}${VM_SA}${NC}"
+
+# ── Create VM ────────────────────────────────────────────────────────────────
 header "Creating VM"
 
 VM_NAME="openclaw-vm"
 MACHINE_TYPE="n2-standard-2"
 
-# Try multiple zones in order — n2 availability varies across zones
-ZONES=(
-  "us-central1-a"
-  "us-central1-b"
-  "us-central1-c"
-  "us-central1-f"
-  "us-east1-b"
-  "us-east1-c"
-  "us-west1-a"
-  "us-west1-b"
-)
+# n2 capacity varies by zone — try several.
+ZONES=(us-central1-a us-central1-b us-central1-c us-central1-f
+       us-east1-b   us-east1-c   us-west1-a    us-west1-b)
 
-log "Machine type : ${MACHINE_TYPE} (2 vCPU, 8 GB RAM)"
-log "OS           : Debian 13 (trixie)"
-log "Disk         : 10 GB"
+log "Machine: ${MACHINE_TYPE}  OS: Debian 13  Disk: 20 GB"
 
-VM_CREATED=false
 ZONE=""
 for z in "${ZONES[@]}"; do
-  log "Trying zone: ${z}..."
+  log "Trying zone ${z}..."
   if gcloud compute instances create "$VM_NAME" \
-    --project="$PROJECT_ID" \
-    --zone="$z" \
-    --machine-type="$MACHINE_TYPE" \
-    --image-family="debian-13" \
-    --image-project="debian-cloud" \
-    --boot-disk-size="10GB" \
-    --boot-disk-type="pd-balanced" \
-    --tags="openclaw" \
-    --scopes="cloud-platform" \
-    --metadata="repo-url=${REPO_URL},setup-token=${SETUP_TOKEN}" \
-    --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh" \
-    --quiet 2>&1; then
-    VM_CREATED=true
+      --project="$PROJECT_ID" \
+      --zone="$z" \
+      --machine-type="$MACHINE_TYPE" \
+      --image-family="debian-13" \
+      --image-project="debian-cloud" \
+      --boot-disk-size="20GB" \
+      --boot-disk-type="pd-balanced" \
+      --tags="openclaw" \
+      --service-account="$VM_SA" \
+      --scopes="cloud-platform" \
+      --metadata="repo-url=${REPO_URL},setup-token=${SETUP_TOKEN},gateway-token=${GATEWAY_TOKEN}" \
+      --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh" \
+      --quiet 2>&1 >/dev/null; then
     ZONE="$z"
     break
   fi
-  warn "Zone ${z} unavailable, trying next..."
+  warn "  zone ${z} unavailable, trying next..."
 done
-
-if [ "$VM_CREATED" = false ]; then
-  die "Could not create VM in any zone. This is usually a temporary GCP capacity issue.\n  Wait a few minutes and re-run the script."
-fi
+[ -n "$ZONE" ] || die "Could not create VM in any zone — likely a transient GCP capacity issue. Wait a few minutes and re-run."
 
 VM_IP=$(gcloud compute instances describe "$VM_NAME" \
-  --project="$PROJECT_ID" \
-  --zone="$ZONE" \
+  --project="$PROJECT_ID" --zone="$ZONE" \
   --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
-
-success "VM created — IP: ${BOLD}${VM_IP}${NC}"
-
-# ── Vertex AI: grant role to VM service account ──────────────────────────────
-header "Configuring Vertex AI access"
-
-PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
-SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:${SA}" \
-  --role="roles/aiplatform.user" \
-  --quiet
-
-success "Vertex AI User role granted to VM service account (ADC)"
+success "VM created in ${ZONE} — IP: ${BOLD}${VM_IP}${NC}"
 
 # ── Firewall ─────────────────────────────────────────────────────────────────
 header "Opening ports"
@@ -206,16 +203,18 @@ gcloud compute firewall-rules create allow-openclaw \
 success "Port 8080  → Setup wizard"
 success "Port 18789 → OpenClaw dashboard"
 
-# ── Wait for setup server ────────────────────────────────────────────────────
-header "Waiting for VM to initialise"
-log "Installing Node.js 24 + OpenClaw on the VM (~3 minutes)..."
+# ── Wait for setup wizard ────────────────────────────────────────────────────
+header "Waiting for VM to provision OpenClaw"
+log "Installing Node 24 + OpenClaw + setup wizard on the VM..."
+log "${DIM}Typical install time: 4-6 minutes${NC}"
 
-SETUP_URL="http://${VM_IP}:8080/health"
+SETUP_HEALTH="http://${VM_IP}:8080/health"
+MAX_ATTEMPTS=120   # 120 × 5s = 10 minutes
 READY=false
 
-for i in $(seq 1 60); do
-  printf "\r  ${DIM}Attempt %d/60 — checking http://%s:8080 ...${NC}" "$i" "$VM_IP"
-  if curl -sf --max-time 5 "$SETUP_URL" >/dev/null 2>&1; then
+for i in $(seq 1 $MAX_ATTEMPTS); do
+  printf "\r  ${DIM}Attempt %d/%d — polling %s${NC}" "$i" "$MAX_ATTEMPTS" "$SETUP_HEALTH"
+  if curl -sf --max-time 5 "$SETUP_HEALTH" >/dev/null 2>&1; then
     READY=true
     break
   fi
@@ -233,16 +232,20 @@ echo -e "${GREEN}${BOLD}└─────────────────�
 echo ""
 
 if [ "$READY" = true ]; then
-  echo -e "  👉  Complete setup at:"
+  echo -e "  👉  Open the setup wizard:"
   echo -e "      ${BLUE}${BOLD}${SETUP_LINK}${NC}"
 else
-  warn "Setup server is still starting up."
-  echo -e "  👉  Try this URL in ~1 minute:"
+  warn "Setup wizard did not respond within 10 minutes."
+  echo -e "  The VM may still be installing. Try the URL in 1-2 minutes:"
   echo -e "      ${BLUE}${BOLD}${SETUP_LINK}${NC}"
+  echo ""
+  echo -e "  ${DIM}If it still fails, SSH in for logs:"
+  echo -e "    gcloud compute ssh ${VM_NAME} --project=${PROJECT_ID} --zone=${ZONE}"
+  echo -e "    sudo tail -100 /var/log/openclaw-startup.log${NC}"
 fi
 
 echo ""
 echo -e "  ${DIM}Project : ${PROJECT_NAME} (${PROJECT_ID})"
-echo -e "  VM IP   : ${VM_IP}"
-echo -e "  Zone    : ${ZONE}${NC}"
+echo -e "  VM      : ${VM_NAME}  /  ${ZONE}"
+echo -e "  VM IP   : ${VM_IP}${NC}"
 echo ""

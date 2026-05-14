@@ -1,18 +1,18 @@
 'use strict';
 
-// ── Setup token from URL ──────────────────────────────────────────────────────
-// deploy.sh generates a random token and embeds it in the URL it prints.
-// All API calls include this token. Without it, the server rejects requests.
+// deploy.sh embeds a single-use setup token in the URL. Without it, the
+// server rejects every API call.
 const SETUP_TOKEN = new URLSearchParams(window.location.search).get('token') || '';
 
-// ── Screen manager ────────────────────────────────────────────────────────────
+let previousScreenId = null;
+
+// ── Screens ──────────────────────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById(id);
   if (el) el.classList.add('active');
 }
 
-// ── Status badge ──────────────────────────────────────────────────────────────
 function setBadge(text, cls) {
   const b = document.getElementById('status-badge');
   if (!b) return;
@@ -20,16 +20,15 @@ function setBadge(text, cls) {
   b.className   = 'badge ' + (cls || '');
 }
 
-// ── API helper — always includes the setup token ─────────────────────────────
+// ── API ──────────────────────────────────────────────────────────────────────
 async function api(path, options = {}) {
   const sep = path.includes('?') ? '&' : '?';
   const url = `${path}${sep}token=${encodeURIComponent(SETUP_TOKEN)}`;
   return fetch(url, options);
 }
 
-// ── Bootstrap: check current status on load ───────────────────────────────────
+// ── Init ─────────────────────────────────────────────────────────────────────
 async function init() {
-  // If no token in URL, show unauthorized screen
   if (!SETUP_TOKEN) {
     showScreen('screen-unauthorized');
     setBadge('No token', 'error');
@@ -40,7 +39,7 @@ async function init() {
   setBadge('Connecting…', 'starting');
 
   try {
-    const res  = await api('/api/status');
+    const res = await api('/api/status');
 
     if (res.status === 403) {
       showScreen('screen-unauthorized');
@@ -50,15 +49,18 @@ async function init() {
 
     const data = await res.json();
 
-    if (data.openclawRunning) {
-      setBadge('Running', 'running');
-    } else {
-      setBadge('Starting…', 'starting');
+    if (data.startupFailure) {
+      setBadge('Boot failed', 'error');
+      showDiagnostics();
+      return;
     }
 
+    if (data.openclawRunning) setBadge('Running', 'running');
+    else                      setBadge('Starting…', 'starting');
+
+    setDashboardLink(data.dashboardUrl);
+
     if (data.telegramConfigured) {
-      // Already fully configured — skip straight to done
-      setDashboardLink(data.dashboardUrl);
       showScreen('screen-done');
     } else {
       showScreen('screen-telegram');
@@ -66,12 +68,11 @@ async function init() {
   } catch (err) {
     console.error('Status check failed:', err);
     setBadge('Error', 'error');
-    // Still show the form — user can try to set up even if status check failed
     showScreen('screen-telegram');
   }
 }
 
-// ── Telegram form ─────────────────────────────────────────────────────────────
+// ── Telegram form ────────────────────────────────────────────────────────────
 function clearError() {
   const err = document.getElementById('telegram-error');
   const inp = document.getElementById('telegram-token');
@@ -99,7 +100,7 @@ async function submitTelegram() {
     return;
   }
 
-  btn.disabled   = true;
+  btn.disabled    = true;
   btn.textContent = 'Connecting…';
 
   try {
@@ -117,7 +118,6 @@ async function submitTelegram() {
       return;
     }
 
-    // Success
     setBadge('Running', 'running');
     setDashboardLink(data.dashboardUrl);
     showScreen('screen-done');
@@ -129,22 +129,78 @@ async function submitTelegram() {
   }
 }
 
-// ── Dashboard link ────────────────────────────────────────────────────────────
 function setDashboardLink(url) {
   const a = document.getElementById('dashboard-link');
   if (a && url) a.href = url;
 }
 
-// ── Allow Enter key in token input ────────────────────────────────────────────
+// ── Diagnostics ──────────────────────────────────────────────────────────────
+function showDiagnostics(ev) {
+  if (ev) ev.preventDefault();
+  const current = document.querySelector('.screen.active');
+  previousScreenId = current ? current.id : 'screen-telegram';
+  showScreen('screen-diagnostics');
+  loadDiagnostics();
+}
+
+function hideDiagnostics() {
+  showScreen(previousScreenId || 'screen-telegram');
+}
+
+async function loadDiagnostics() {
+  setText('diag-gateway',       'Loading…');
+  setText('diag-vm',            'Loading…');
+  setText('diag-log-gateway',   'Loading…');
+  setText('diag-log-startup',   'Loading…');
+  setText('diag-log-setup',     'Loading…');
+  setText('diag-config',        'Loading…');
+
+  try {
+    const res = await api('/api/diagnostics');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+
+    const failureEl = document.getElementById('diag-failure');
+    if (d.startupFailure) {
+      failureEl.textContent = 'Startup failed on the VM: ' + d.startupFailure;
+      failureEl.classList.remove('hidden');
+    } else {
+      failureEl.classList.add('hidden');
+    }
+
+    setText('diag-gateway',
+      `Service:    ${d.gateway?.serviceName || '-'}\n` +
+      `State:      ${d.gateway?.activeRaw  || '-'}\n` +
+      `Details:    ${d.gateway?.details    || '-'}\n` +
+      `Dashboard:  ${d.dashboardUrl}`);
+
+    setText('diag-vm',
+      `IP:         ${d.vmIp}\n` +
+      `Project:    ${d.projectId}\n` +
+      `Region:     ${d.region}\n` +
+      `Time:       ${d.timestamp}`);
+
+    setText('diag-log-gateway', d.logs?.gateway || '(no logs yet)');
+    setText('diag-log-startup', d.logs?.startup || '(no startup log)');
+    setText('diag-log-setup',   d.logs?.setup   || '(no setup-wizard log)');
+    setText('diag-config',      d.config ? JSON.stringify(d.config, null, 2) : '(no config)');
+
+  } catch (err) {
+    setText('diag-gateway', 'Failed to load diagnostics: ' + err.message);
+  }
+}
+
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+// ── Wire up Enter key + init ─────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   const inp = document.getElementById('telegram-token');
   if (inp) {
-    inp.addEventListener('keydown', e => {
-      if (e.key === 'Enter') submitTelegram();
-    });
-    // Clear error styling on input
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') submitTelegram(); });
     inp.addEventListener('input', clearError);
   }
-
   init();
 });

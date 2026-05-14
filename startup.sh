@@ -2,195 +2,110 @@
 # =============================================================================
 # OpenClaw VM Startup Script
 # Runs automatically on first boot via GCP startup-script metadata.
-# Installs Node.js 24, OpenClaw, and the setup wizard server.
+# Installs Node.js 24, the setup wizard (early, so diagnostics work), and
+# OpenClaw itself.
 #
-# NOTE: We intentionally do NOT use `set -e` here. A startup script that dies
-# on the first transient apt/npm error leaves the user with a broken VM and
-# zero diagnostics. Instead, each critical step checks its own exit code and
-# either retries or logs a clear message.
+# NOTE: We intentionally do NOT use `set -e`. A startup script that dies on
+# the first transient apt/npm error leaves the user with no diagnostics. Each
+# critical step checks its own exit code and either retries or fails via
+# fail(), which writes a marker that the setup wizard exposes.
 # =============================================================================
 
-# Log everything to a file for debugging
 exec > >(tee /var/log/openclaw-startup.log) 2>&1
-echo "=== OpenClaw Startup: $(date) ==="
+echo "=== OpenClaw VM startup: $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
 
-fail() { echo "FATAL: $*"; exit 1; }
+fail() {
+  echo "FATAL: $*"
+  # Marker file picked up by the setup wizard's /api/diagnostics.
+  echo "$*" > /var/log/openclaw-startup.failed
+  exit 1
+}
 
-# ── Read GCP instance metadata ───────────────────────────────────────────────
+# ── Read instance metadata ───────────────────────────────────────────────────
 META="http://metadata.google.internal/computeMetadata/v1"
-GH()  { curl -sf -H "Metadata-Flavor: Google" "$META/$1"; }
+md() { curl -sf -H "Metadata-Flavor: Google" "$META/$1"; }
 
-REPO_URL=$(GH "instance/attributes/repo-url"       || echo "")
-SETUP_TOKEN=$(GH "instance/attributes/setup-token" || echo "")
-VM_IP=$(GH   "instance/network-interfaces/0/access-configs/0/external-ip")
-PROJECT_ID=$(GH "project/project-id")
-ZONE=$(GH    "instance/zone" | awk -F'/' '{print $NF}')
+REPO_URL=$(md      "instance/attributes/repo-url"        || echo "")
+SETUP_TOKEN=$(md   "instance/attributes/setup-token"     || echo "")
+GATEWAY_TOKEN=$(md "instance/attributes/gateway-token"   || echo "")
+VM_IP=$(md         "instance/network-interfaces/0/access-configs/0/external-ip")
+PROJECT_ID=$(md    "project/project-id")
+ZONE=$(md          "instance/zone" | awk -F'/' '{print $NF}')
 REGION=$(echo "$ZONE" | sed 's/-[a-z]$//')
 
-echo "VM_IP=${VM_IP}  PROJECT_ID=${PROJECT_ID}  REGION=${REGION}  ZONE=${ZONE}"
+[ -n "$REPO_URL" ]      || fail "metadata: repo-url is empty"
+[ -n "$SETUP_TOKEN" ]   || fail "metadata: setup-token is empty"
+[ -n "$GATEWAY_TOKEN" ] || fail "metadata: gateway-token is empty"
+[ -n "$VM_IP" ]         || fail "metadata: external IP unavailable"
+
+echo "PROJECT_ID=${PROJECT_ID}  REGION=${REGION}  ZONE=${ZONE}  VM_IP=${VM_IP}"
 echo "REPO_URL=${REPO_URL}"
 
 # ── System packages ──────────────────────────────────────────────────────────
 echo "--- Installing system packages ---"
 for attempt in 1 2 3; do
   apt-get update -qq && break
-  echo "apt-get update failed (attempt ${attempt}/3), retrying in 10s..."
+  echo "apt-get update failed (${attempt}/3), retrying in 10s..."
   sleep 10
 done
-apt-get install -y -qq curl git ca-certificates gnupg || fail "Could not install base packages"
+apt-get install -y -qq curl git ca-certificates gnupg jq || fail "apt-get install failed"
 
-# ── Node.js 24 via NodeSource ────────────────────────────────────────────────
+# ── Node.js 24 ───────────────────────────────────────────────────────────────
 echo "--- Installing Node.js 24 ---"
-curl -fsSL https://deb.nodesource.com/setup_24.x | bash - || fail "NodeSource setup failed"
-apt-get install -y -qq nodejs || fail "Could not install Node.js"
-echo "Node.js $(node --version)  npm $(npm --version)"
+curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+  || fail "NodeSource setup_24.x failed"
+apt-get install -y -qq nodejs || fail "apt-get install nodejs failed"
+NODE_BIN=$(command -v node || true)
+[ -n "$NODE_BIN" ] || fail "node binary not found after install"
+echo "Node.js $(node --version) / npm $(npm --version)"
 
-# ── OpenClaw system user ──────────────────────────────────────────────────────
+# ── openclaw system user ─────────────────────────────────────────────────────
 echo "--- Creating openclaw user ---"
 useradd -r -m -d /home/openclaw -s /bin/bash openclaw 2>/dev/null || true
 
-# ── Install OpenClaw ─────────────────────────────────────────────────────────
-echo "--- Installing OpenClaw ---"
-for attempt in 1 2 3; do
-  npm install -g openclaw@latest && break
-  echo "npm install openclaw failed (attempt ${attempt}/3), retrying in 15s..."
-  sleep 15
-done
-command -v openclaw >/dev/null || fail "openclaw not found after 3 install attempts"
-
-# Detect actual binary path (npm may install to /usr/bin, /usr/local/bin, etc.)
-OPENCLAW_BIN=$(command -v openclaw || true)
-NODE_BIN=$(command -v node || true)
-
-if [ -z "$OPENCLAW_BIN" ]; then
-  fail "openclaw binary not found in PATH after install"
-fi
-if [ -z "$NODE_BIN" ]; then
-  fail "node binary not found in PATH after install"
-fi
-echo "OpenClaw binary: ${OPENCLAW_BIN}"
-echo "Node binary:     ${NODE_BIN}"
-echo "OpenClaw version: $(openclaw --version 2>/dev/null || echo 'unknown')"
-
-# ── OpenClaw config ───────────────────────────────────────────────────────────
-echo "--- Writing OpenClaw config ---"
-mkdir -p /home/openclaw/.openclaw
-
-cat > /home/openclaw/.openclaw/openclaw.json << OCCONF
-{
-  "agent": {
-    "model": "google-vertex/gemini-3.1-pro-preview-customtools",
-    "timezone": "UTC",
-    "compactionStrategy": "summarize"
-  },
-  "models": {
-    "providers": {
-      "google-vertex": {
-        "project": "${PROJECT_ID}",
-        "location": "${REGION}"
-      }
-    }
-  },
-  "gateway": {
-    "port": 18789,
-    "bind": "0.0.0.0",
-    "auth": "token"
-  },
-  "channels": {
-    "telegram": {
-      "enabled": false
-    }
-  }
-}
-OCCONF
-
-chown -R openclaw:openclaw /home/openclaw
-
-# ── sudoers: allow openclaw to restart itself ─────────────────────────────────
-echo "openclaw ALL=(ALL) NOPASSWD: /bin/systemctl restart openclaw" \
-  > /etc/sudoers.d/openclaw
-chmod 0440 /etc/sudoers.d/openclaw
-
-# ── Setup wizard server ───────────────────────────────────────────────────────
-echo "--- Cloning deploy repo for setup server ---"
-if [ -z "$REPO_URL" ]; then
-  fail "No repo URL in metadata — setup server cannot be installed."
-fi
-
+# ── Setup wizard install (early — before the slow openclaw install) ──────────
+# Starting the wizard BEFORE installing OpenClaw means that if the OpenClaw
+# install or first-start fails, the user can still reach /api/diagnostics and
+# see exactly why.
+echo "--- Installing setup wizard from ${REPO_URL} ---"
+rm -rf /opt/openclaw-deploy
 for attempt in 1 2 3; do
   git clone "$REPO_URL" /opt/openclaw-deploy --depth=1 --quiet && break
-  echo "git clone failed (attempt ${attempt}/3), retrying in 10s..."
+  echo "git clone failed (${attempt}/3), retrying in 10s..."
   rm -rf /opt/openclaw-deploy
   sleep 10
 done
-
-if [ ! -d /opt/openclaw-deploy/setup-server ]; then
-  fail "setup-server directory not found after clone"
-fi
+[ -d /opt/openclaw-deploy/setup-server ] \
+  || fail "setup-server directory missing after clone"
 
 cd /opt/openclaw-deploy/setup-server
 for attempt in 1 2 3; do
-  npm install --omit=dev && break
-  echo "npm install for setup-server failed (attempt ${attempt}/3), retrying in 10s..."
+  npm install --omit=dev --no-audit --no-fund && break
+  echo "npm install for setup-server failed (${attempt}/3), retrying in 10s..."
   sleep 10
 done
-if [ ! -d /opt/openclaw-deploy/setup-server/node_modules ]; then
-  fail "setup-server node_modules missing after 3 install attempts"
-fi
+[ -d /opt/openclaw-deploy/setup-server/node_modules ] \
+  || fail "setup-server node_modules missing after install"
 
-# Runtime env for the setup server
 cat > /opt/openclaw-deploy/setup-server/.env << SENV
+PORT=8080
 VM_IP=${VM_IP}
 PROJECT_ID=${PROJECT_ID}
+REGION=${REGION}
 OPENCLAW_CONFIG=/home/openclaw/.openclaw/openclaw.json
 SETUP_TOKEN=${SETUP_TOKEN}
-PORT=8080
+GATEWAY_TOKEN=${GATEWAY_TOKEN}
+STARTUP_LOG=/var/log/openclaw-startup.log
 SENV
+chmod 0600 /opt/openclaw-deploy/setup-server/.env
 
-chown -R openclaw:openclaw /opt/openclaw-deploy
+# Ensure config directory exists so the wizard's /api/status doesn't crash
+# while the config is still being written.
+mkdir -p /home/openclaw/.openclaw
+chown -R openclaw:openclaw /home/openclaw /opt/openclaw-deploy
 
-# ── Detect the right openclaw start command ──────────────────────────────────
-# IMPORTANT: We must NOT run `openclaw start --help` because some CLIs ignore
-# unknown flags and actually execute the subcommand, which would hang this script.
-# Instead, inspect the top-level help text for available subcommands.
-echo "--- Detecting OpenClaw start command ---"
-OPENCLAW_HELP=$("${OPENCLAW_BIN}" --help 2>&1 || true)
-OPENCLAW_CMD="${OPENCLAW_BIN} start"  # default fallback
-
-if echo "$OPENCLAW_HELP" | grep -qw "start"; then
-  OPENCLAW_CMD="${OPENCLAW_BIN} start"
-  echo "Detected subcommand 'start' — using: ${OPENCLAW_CMD}"
-elif echo "$OPENCLAW_HELP" | grep -qw "gateway"; then
-  OPENCLAW_CMD="${OPENCLAW_BIN} gateway"
-  echo "Detected subcommand 'gateway' — using: ${OPENCLAW_CMD}"
-else
-  echo "WARN: Could not detect start command from help output, defaulting to: ${OPENCLAW_CMD}"
-  echo "      Available help output:"
-  echo "$OPENCLAW_HELP" | head -20
-  echo "      If OpenClaw fails to start, SSH in and run: openclaw onboard --install-daemon"
-fi
-
-# ── systemd: openclaw.service ─────────────────────────────────────────────────
-cat > /etc/systemd/system/openclaw.service << SVC
-[Unit]
-Description=OpenClaw Gateway
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=openclaw
-ExecStart=${OPENCLAW_CMD}
-Restart=on-failure
-RestartSec=10
-WorkingDirectory=/home/openclaw
-Environment=HOME=/home/openclaw
-
-[Install]
-WantedBy=multi-user.target
-SVC
-
-# ── systemd: openclaw-setup.service ──────────────────────────────────────────
+# Write + start the setup-wizard systemd unit. We do this now so the user can
+# reach the wizard even if everything below this point fails.
 cat > /etc/systemd/system/openclaw-setup.service << SVC
 [Unit]
 Description=OpenClaw Setup Wizard
@@ -200,32 +115,117 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=openclaw
+WorkingDirectory=/opt/openclaw-deploy/setup-server
 ExecStart=${NODE_BIN} /opt/openclaw-deploy/setup-server/server.js
 Restart=on-failure
 RestartSec=5
-WorkingDirectory=/opt/openclaw-deploy/setup-server
 EnvironmentFile=/opt/openclaw-deploy/setup-server/.env
 
 [Install]
 WantedBy=multi-user.target
 SVC
 
-# ── Start services ────────────────────────────────────────────────────────────
 systemctl daemon-reload
-systemctl enable openclaw.service openclaw-setup.service
+systemctl enable --now openclaw-setup.service
+sleep 2
+systemctl is-active --quiet openclaw-setup.service \
+  || fail "openclaw-setup.service did not start — see journalctl -u openclaw-setup"
+echo "openclaw-setup running: http://${VM_IP}:8080"
 
-# Start setup server first — it's the health check target
-systemctl start openclaw-setup.service
-echo "Setup server started: http://${VM_IP}:8080"
+# ── Install OpenClaw globally ────────────────────────────────────────────────
+echo "--- Installing OpenClaw via npm (this is the slow step) ---"
+for attempt in 1 2 3; do
+  npm install -g openclaw@latest && break
+  echo "npm install openclaw failed (${attempt}/3), retrying in 15s..."
+  sleep 15
+done
 
-# Start OpenClaw (may take a moment; don't block on it)
-systemctl start openclaw.service
-if systemctl is-active --quiet openclaw.service; then
-  echo "OpenClaw service started successfully"
-else
-  echo "WARN: OpenClaw service may still be starting. Check: journalctl -u openclaw -f"
-fi
+OPENCLAW_BIN=$(command -v openclaw || true)
+[ -n "$OPENCLAW_BIN" ] || fail "openclaw binary not found after install"
+echo "openclaw: ${OPENCLAW_BIN} ($(openclaw --version 2>/dev/null || echo unknown))"
 
-echo "=== Startup complete: $(date) ==="
+# ── openclaw.json ────────────────────────────────────────────────────────────
+# Vertex project/location come from env vars in the systemd unit below, NOT
+# this file — the provider config schema rejects unknown keys.
+echo "--- Writing OpenClaw config ---"
+cat > /home/openclaw/.openclaw/openclaw.json << OCCONF
+{
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "bind": "lan",
+    "auth": {
+      "mode": "token",
+      "token": "${GATEWAY_TOKEN}"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "google-vertex/gemini-3.1-pro-preview"
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "dmPolicy": "pairing"
+    }
+  }
+}
+OCCONF
+
+chown -R openclaw:openclaw /home/openclaw/.openclaw
+
+# Validate before the gateway tries to boot — surfaces config errors with a
+# clear message instead of a systemd restart loop.
+# Both runuser and sudo -u keep the caller's HOME, so set it explicitly via
+# env. openclaw uses $HOME to locate ~/.openclaw/openclaw.json.
+runuser -u openclaw -- env HOME=/home/openclaw OPENCLAW_NO_RESPAWN=1 \
+  "${OPENCLAW_BIN}" config validate 2>&1 | tee /var/log/openclaw-config-validate.log
+VALIDATE_RC=${PIPESTATUS[0]}
+[ "$VALIDATE_RC" -eq 0 ] || fail "openclaw config validate rejected the generated config (rc=$VALIDATE_RC)"
+
+# ── sudoers: openclaw can restart its own gateway service ────────────────────
+# Debian has usrmerge so /bin and /usr/bin point to the same systemctl; list
+# both to keep sudo's strict path matching happy regardless of PATH lookup.
+echo "openclaw ALL=(ALL) NOPASSWD: /bin/systemctl restart openclaw-gateway, /usr/bin/systemctl restart openclaw-gateway" \
+  > /etc/sudoers.d/openclaw-gateway
+chmod 0440 /etc/sudoers.d/openclaw-gateway
+
+# ── openclaw-gateway.service ─────────────────────────────────────────────────
+# Service name matches OpenClaw's upstream convention so docs/tools work.
+# GOOGLE_CLOUD_PROJECT/LOCATION are required by the google-vertex provider.
+cat > /etc/systemd/system/openclaw-gateway.service << SVC
+[Unit]
+Description=OpenClaw Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openclaw
+WorkingDirectory=/home/openclaw
+ExecStart=${OPENCLAW_BIN} gateway
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+Environment=HOME=/home/openclaw
+Environment=GOOGLE_CLOUD_PROJECT=${PROJECT_ID}
+Environment=GOOGLE_CLOUD_LOCATION=global
+Environment=OPENCLAW_NO_RESPAWN=1
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
+systemctl daemon-reload
+systemctl enable --now openclaw-gateway.service
+sleep 3
+systemctl is-active --quiet openclaw-gateway.service \
+  && echo "openclaw-gateway started" \
+  || echo "WARN: openclaw-gateway not active — check journalctl -u openclaw-gateway"
+
+echo "=== Startup complete: $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
 echo "Setup wizard: http://${VM_IP}:8080"
 echo "Dashboard:    http://${VM_IP}:18789"
