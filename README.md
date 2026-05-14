@@ -25,7 +25,7 @@ That's it. Everything else is automated.
 
 Click the button below. It opens Google Cloud Shell (a browser-based terminal) with this repo cloned, a tutorial pane on the right, and a banner in the terminal telling you the next command.
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/iliasacademia/openclaw-gcp-deploy&tutorial=cloudshell_tutorial.md&cloudshell_print=cloudshell_banner.txt)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/iliasacademia/openclaw-gcp-deploy&tutorial=cloudshell_tutorial.md&cloudshell_print=cloudshell_banner.txt&shellonly=true)
 
 You'll see a **"Trust repo"** dialog first — check the box and click **Confirm**. (This is Google's security gate for every Cloud Shell deploy button; it can't be bypassed.)
 
