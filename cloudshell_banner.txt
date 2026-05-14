@@ -1,0 +1,14 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║   🦞  OpenClaw — Ready to deploy                             ║
+║                                                              ║
+║   Type this command and press Enter:                         ║
+║                                                              ║
+║       bash deploy.sh                                         ║
+║                                                              ║
+║   (or click the ▶ icon next to the same command in the       ║
+║    tutorial pane on the right — that runs it for you)        ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+
