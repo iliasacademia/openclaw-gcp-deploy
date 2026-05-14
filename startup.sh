@@ -99,9 +99,47 @@ STARTUP_LOG=/var/log/openclaw-startup.log
 SENV
 chmod 0600 /opt/openclaw-deploy/setup-server/.env
 
-# Ensure config directory exists so the wizard's /api/status doesn't crash
-# while the config is still being written.
+# Write openclaw.json now (before the slow npm install -g openclaw). This way
+# the setup wizard's /api/status and /api/telegram never see a missing config
+# — eliminating a race where a fast user opens the wizard before the gateway
+# binary is installed. The schema is fixed and the gateway token is known
+# from VM metadata, so we can write the final shape upfront.
+#
+# Vertex project/location come from env vars on the gateway service unit, NOT
+# this file — the provider config schema rejects unknown keys.
 mkdir -p /home/openclaw/.openclaw
+cat > /home/openclaw/.openclaw/openclaw.json << OCCONF
+{
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "bind": "lan",
+    "auth": {
+      "mode": "token",
+      "token": "${GATEWAY_TOKEN}"
+    },
+    "controlUi": {
+      "allowedOrigins": [
+        "http://${VM_IP}:18789"
+      ]
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "google-vertex/gemini-3.1-pro-preview"
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "dmPolicy": "pairing"
+    }
+  }
+}
+OCCONF
+
 chown -R openclaw:openclaw /home/openclaw /opt/openclaw-deploy
 
 # Write + start the setup-wizard systemd unit. We do this now so the user can
@@ -144,46 +182,9 @@ OPENCLAW_BIN=$(command -v openclaw || true)
 [ -n "$OPENCLAW_BIN" ] || fail "openclaw binary not found after install"
 echo "openclaw: ${OPENCLAW_BIN} ($(openclaw --version 2>/dev/null || echo unknown))"
 
-# ── openclaw.json ────────────────────────────────────────────────────────────
-# Vertex project/location come from env vars in the systemd unit below, NOT
-# this file — the provider config schema rejects unknown keys.
-echo "--- Writing OpenClaw config ---"
-cat > /home/openclaw/.openclaw/openclaw.json << OCCONF
-{
-  "gateway": {
-    "mode": "local",
-    "port": 18789,
-    "bind": "lan",
-    "auth": {
-      "mode": "token",
-      "token": "${GATEWAY_TOKEN}"
-    },
-    "controlUi": {
-      "allowedOrigins": [
-        "http://${VM_IP}:18789"
-      ]
-    }
-  },
-  "agents": {
-    "defaults": {
-      "model": {
-        "primary": "google-vertex/gemini-3.1-pro-preview"
-      }
-    }
-  },
-  "channels": {
-    "telegram": {
-      "enabled": false,
-      "dmPolicy": "pairing"
-    }
-  }
-}
-OCCONF
-
-chown -R openclaw:openclaw /home/openclaw/.openclaw
-
-# Validate before the gateway tries to boot — surfaces config errors with a
-# clear message instead of a systemd restart loop.
+# Validate the config we wrote earlier — now that the openclaw binary exists,
+# we can surface schema errors with a clear message instead of a systemd
+# restart loop.
 # Both runuser and sudo -u keep the caller's HOME, so set it explicitly via
 # env. openclaw uses $HOME to locate ~/.openclaw/openclaw.json.
 runuser -u openclaw -- env HOME=/home/openclaw OPENCLAW_NO_RESPAWN=1 \
