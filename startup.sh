@@ -157,6 +157,11 @@ cat > /home/openclaw/.openclaw/openclaw.json << OCCONF
     "auth": {
       "mode": "token",
       "token": "${GATEWAY_TOKEN}"
+    },
+    "controlUi": {
+      "allowedOrigins": [
+        "http://${VM_IP}:18789"
+      ]
     }
   },
   "agents": {
