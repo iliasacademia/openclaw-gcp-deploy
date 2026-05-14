@@ -142,7 +142,8 @@ cat > /home/openclaw/.openclaw/openclaw.json << OCCONF
     "controlUi": {
       "allowedOrigins": [
         "http://${VM_IP}:18789"
-      ]
+      ],
+      "allowInsecureAuth": true
     }
   },
   "agents": {
