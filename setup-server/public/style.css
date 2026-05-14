@@ -390,3 +390,26 @@ input[type="text"].error  { border-color: var(--red); }
   border: 1px solid var(--border);
 }
 .btn-secondary:hover { background: var(--surface); }
+
+/* ── Inline OAuth setup steps ───────────────────────────────────────────────── */
+.oauth-steps {
+  margin: 8px 0 0 0;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.oauth-steps li {
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  padding-left: 0;
+}
+.oauth-steps li::before { content: none; }
+.oauth-steps a { color: var(--accent); }
+.oauth-steps code {
+  background: var(--surface2);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}

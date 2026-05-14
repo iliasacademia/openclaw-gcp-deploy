@@ -107,8 +107,24 @@
               approve it in the dashboard under <em>Access</em>.
             </li>
             <li>
-              <strong>Connect Google (Drive, Gmail, Calendar)</strong><br/>
-              Open the dashboard → <em>Skills</em> → <em>gog</em> → authorise.
+              <strong>Connect Google (Gmail, Drive, Calendar)</strong><br/>
+              The <code>gog</code> CLI is pre-installed and the skill is enabled.
+              To finish the OAuth handshake (one-time, ~2 min):
+              <ol class="oauth-steps">
+                <li>
+                  Open <a id="oauth-consent-link" href="#" target="_blank">OAuth consent screen</a>
+                  → choose <em>External</em> → fill the required fields → add yourself as a Test user.
+                </li>
+                <li>
+                  Open <a id="oauth-credentials-link" href="#" target="_blank">Credentials</a>
+                  → <em>Create credentials</em> → <em>OAuth client ID</em> → <em>Desktop app</em> →
+                  download the JSON.
+                </li>
+                <li>
+                  In the OpenClaw dashboard → <em>Skills</em> → <em>gog</em> →
+                  follow the authorise prompts with that JSON.
+                </li>
+              </ol>
             </li>
             <li>
               <strong>Explore skills</strong><br/>

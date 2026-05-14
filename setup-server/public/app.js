@@ -60,6 +60,8 @@ async function init() {
 
     setDashboardLink(data.dashboardUrl);
 
+    setOauthLinks(data.projectId);
+
     if (data.telegramConfigured) {
       showScreen('screen-done');
     } else {
@@ -120,6 +122,7 @@ async function submitTelegram() {
 
     setBadge('Running', 'running');
     setDashboardLink(data.dashboardUrl);
+    if (data.projectId) setOauthLinks(data.projectId);
     showScreen('screen-done');
 
   } catch (err) {
@@ -132,6 +135,16 @@ async function submitTelegram() {
 function setDashboardLink(url) {
   const a = document.getElementById('dashboard-link');
   if (a && url) a.href = url;
+}
+
+// Build deep links into the user's own GCP project for the OAuth consent
+// screen + credentials pages. projectId is reported by /api/status.
+function setOauthLinks(projectId) {
+  if (!projectId) return;
+  const consent     = document.getElementById('oauth-consent-link');
+  const credentials = document.getElementById('oauth-credentials-link');
+  if (consent)     consent.href     = `https://console.cloud.google.com/apis/credentials/consent?project=${encodeURIComponent(projectId)}`;
+  if (credentials) credentials.href = `https://console.cloud.google.com/apis/credentials?project=${encodeURIComponent(projectId)}`;
 }
 
 // ── Diagnostics ──────────────────────────────────────────────────────────────

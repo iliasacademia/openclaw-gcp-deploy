@@ -60,6 +60,7 @@ success "Repo: ${DIM}${REPO_URL}${NC}"
 gen_token() { head -c 24 /dev/urandom | base64 | tr -d '+/=' | head -c 32; }
 SETUP_TOKEN=$(gen_token)
 GATEWAY_TOKEN=$(gen_token)
+GOG_KEYRING_PASSWORD=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
 
 # ── Clean up stale projects from previous failed runs ────────────────────────
 header "Creating GCP project"
@@ -108,6 +109,12 @@ gcloud services enable \
   iam.googleapis.com \
   iamcredentials.googleapis.com \
   cloudresourcemanager.googleapis.com \
+  gmail.googleapis.com \
+  calendar-json.googleapis.com \
+  drive.googleapis.com \
+  people.googleapis.com \
+  sheets.googleapis.com \
+  docs.googleapis.com \
   --project="$PROJECT_ID" --quiet
 
 # APIs need ~30-60s to fully propagate before dependent operations work.
@@ -171,7 +178,7 @@ for z in "${ZONES[@]}"; do
       --tags="openclaw" \
       --service-account="$VM_SA" \
       --scopes="cloud-platform" \
-      --metadata="repo-url=${REPO_URL},setup-token=${SETUP_TOKEN},gateway-token=${GATEWAY_TOKEN}" \
+      --metadata="repo-url=${REPO_URL},setup-token=${SETUP_TOKEN},gateway-token=${GATEWAY_TOKEN},gog-keyring=${GOG_KEYRING_PASSWORD}" \
       --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh" \
       --quiet 2>&1 >/dev/null; then
     ZONE="$z"

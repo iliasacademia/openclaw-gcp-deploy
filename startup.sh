@@ -25,9 +25,10 @@ fail() {
 META="http://metadata.google.internal/computeMetadata/v1"
 md() { curl -sf -H "Metadata-Flavor: Google" "$META/$1"; }
 
-REPO_URL=$(md      "instance/attributes/repo-url"        || echo "")
-SETUP_TOKEN=$(md   "instance/attributes/setup-token"     || echo "")
-GATEWAY_TOKEN=$(md "instance/attributes/gateway-token"   || echo "")
+REPO_URL=$(md      "instance/attributes/repo-url"           || echo "")
+SETUP_TOKEN=$(md   "instance/attributes/setup-token"        || echo "")
+GATEWAY_TOKEN=$(md "instance/attributes/gateway-token"      || echo "")
+GOG_KEYRING=$(md   "instance/attributes/gog-keyring"        || echo "")
 VM_IP=$(md         "instance/network-interfaces/0/access-configs/0/external-ip")
 PROJECT_ID=$(md    "project/project-id")
 ZONE=$(md          "instance/zone" | awk -F'/' '{print $NF}')
@@ -36,6 +37,7 @@ REGION=$(echo "$ZONE" | sed 's/-[a-z]$//')
 [ -n "$REPO_URL" ]      || fail "metadata: repo-url is empty"
 [ -n "$SETUP_TOKEN" ]   || fail "metadata: setup-token is empty"
 [ -n "$GATEWAY_TOKEN" ] || fail "metadata: gateway-token is empty"
+[ -n "$GOG_KEYRING" ]   || fail "metadata: gog-keyring is empty"
 [ -n "$VM_IP" ]         || fail "metadata: external IP unavailable"
 [ -n "$PROJECT_ID" ]    || fail "metadata: project ID unavailable (needed for Vertex AI)"
 [ -n "$ZONE" ]          || fail "metadata: zone unavailable"
@@ -155,6 +157,11 @@ cat > /home/openclaw/.openclaw/openclaw.json << OCCONF
       "enabled": false,
       "dmPolicy": "pairing"
     }
+  },
+  "skills": {
+    "entries": {
+      "gog": { "enabled": true }
+    }
   }
 }
 OCCONF
@@ -208,6 +215,37 @@ OPENCLAW_BIN=$(command -v openclaw || true)
 [ -n "$OPENCLAW_BIN" ] || fail "openclaw binary not found after install"
 echo "openclaw: ${OPENCLAW_BIN} ($(openclaw --version 2>/dev/null || echo unknown))"
 
+# ── Install gog (Google Workspace CLI) ───────────────────────────────────────
+# The "gog" skill that OpenClaw uses for Gmail/Calendar/Drive requires the
+# `gog` binary in PATH. Install it from upstream release tarball — no brew on
+# Debian. Best-effort: if this fails the rest of the deploy still works, just
+# the gog skill won't be usable until the user installs it manually.
+echo "--- Installing gog (Google Workspace CLI) ---"
+ARCH=$(dpkg --print-architecture)
+case "$ARCH" in
+  amd64) GOG_ARCH=amd64 ;;
+  arm64) GOG_ARCH=arm64 ;;
+  *)     GOG_ARCH="" ;;
+esac
+if [ -n "$GOG_ARCH" ]; then
+  GOG_URL="https://github.com/openclaw/gogcli/releases/latest/download/gogcli_${GOG_ARCH}.tar.gz"
+  # The filename in the latest release uses the actual version; resolve via API
+  GOG_TAG=$(curl -sf https://api.github.com/repos/openclaw/gogcli/releases/latest | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
+  if [ -n "$GOG_TAG" ]; then
+    GOG_URL="https://github.com/openclaw/gogcli/releases/download/v${GOG_TAG}/gogcli_${GOG_TAG}_linux_${GOG_ARCH}.tar.gz"
+    if curl -sfL "$GOG_URL" | tar -xz -C /usr/local/bin gog 2>/dev/null; then
+      chmod +x /usr/local/bin/gog
+      echo "gog $(gog --version 2>/dev/null || echo installed)"
+    else
+      echo "WARN: gog install failed (continuing — skill will be unavailable until manually installed)"
+    fi
+  else
+    echo "WARN: could not resolve gog latest release (continuing without gog)"
+  fi
+else
+  echo "WARN: unsupported arch '${ARCH}' for gog (continuing without gog)"
+fi
+
 # Validate the config we wrote earlier — now that the openclaw binary exists,
 # we can surface schema errors with a clear message instead of a systemd
 # restart loop.
@@ -245,6 +283,7 @@ TimeoutStartSec=120
 Environment=HOME=/home/openclaw
 Environment=GOOGLE_CLOUD_PROJECT=${PROJECT_ID}
 Environment=GOOGLE_CLOUD_LOCATION=global
+Environment=GOG_KEYRING_PASSWORD=${GOG_KEYRING}
 Environment=OPENCLAW_NO_RESPAWN=1
 
 [Install]

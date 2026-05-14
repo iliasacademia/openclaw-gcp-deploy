@@ -228,6 +228,7 @@ app.post('/api/telegram', requireToken, (req, res) => {
     success: true,
     restarted,
     dashboardUrl: DASHBOARD_URL,
+    projectId: PROJECT_ID,
   });
 });
 
