@@ -3,12 +3,11 @@
 ║                                                              ║
 ║   🦞  OpenClaw — Ready to deploy                             ║
 ║                                                              ║
-║   Type this command and press Enter:                         ║
+║   Type this command in the terminal below and press Enter:   ║
 ║                                                              ║
 ║       bash deploy.sh                                         ║
 ║                                                              ║
-║   (or click the ▶ icon next to the same command in the       ║
-║    tutorial pane on the right — that runs it for you)        ║
+║   The deploy takes ~5 minutes and asks no questions.         ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 

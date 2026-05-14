@@ -11,21 +11,31 @@ This will deploy OpenClaw on a new GCP VM in about **5 minutes**.
 
 ---
 
-## Run the deploy script
+## Run the deploy
 
-Click the **▶ "Run in Cloud Shell"** icon at the top-right of the code block
-below — it runs the command for you. Or type it into the terminal and press
-Enter.
+Click into the terminal below this pane, then type and press **Enter**:
 
 ```bash
 bash deploy.sh
 ```
 
+That's it. The script asks no questions.
+
 ---
 
 When it finishes you'll see a URL like `http://YOUR_IP:8080?token=...` — open
-it to complete setup. The token in the URL is single-use; bookmark or copy
-the full URL.
+it in a new browser tab to complete setup. The token in the URL is
+single-use; bookmark or copy the full URL.
 
 If the script reports the wizard didn't respond in time, wait 1-2 minutes and
 try the URL anyway — the VM is usually still finishing the OpenClaw install.
+
+---
+
+## Done testing?
+
+To delete the project and stop billing, run:
+
+```bash
+bash cleanup.sh
+```

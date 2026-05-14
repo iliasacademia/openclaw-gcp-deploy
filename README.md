@@ -29,13 +29,13 @@ Click the button below. It opens Google Cloud Shell (a browser-based terminal) w
 
 You'll see a **"Trust repo"** dialog first — check the box and click **Confirm**. (This is Google's security gate for every Cloud Shell deploy button; it can't be bypassed.)
 
-Then either click the **▶ icon** next to the `bash deploy.sh` block in the tutorial pane — which runs it for you — or type it into the terminal and press Enter:
+Then click into the terminal at the bottom of Cloud Shell and type:
 
 ```bash
 bash deploy.sh
 ```
 
-Sit back — it takes about 5 minutes and asks no questions.
+Press Enter and sit back — it takes about 5 minutes and asks no questions.
 
 ---
 
