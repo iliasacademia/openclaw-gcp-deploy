@@ -37,9 +37,22 @@ REGION=$(echo "$ZONE" | sed 's/-[a-z]$//')
 [ -n "$SETUP_TOKEN" ]   || fail "metadata: setup-token is empty"
 [ -n "$GATEWAY_TOKEN" ] || fail "metadata: gateway-token is empty"
 [ -n "$VM_IP" ]         || fail "metadata: external IP unavailable"
+[ -n "$PROJECT_ID" ]    || fail "metadata: project ID unavailable (needed for Vertex AI)"
+[ -n "$ZONE" ]          || fail "metadata: zone unavailable"
 
 echo "PROJECT_ID=${PROJECT_ID}  REGION=${REGION}  ZONE=${ZONE}  VM_IP=${VM_IP}"
 echo "REPO_URL=${REPO_URL}"
+
+# Retry an apt-get install several times — transient mirror failures are
+# common enough that one shot isn't safe.
+apt_install() {
+  for attempt in 1 2 3; do
+    apt-get install -y -qq "$@" && return 0
+    echo "apt-get install $* failed (${attempt}/3), retrying in 10s..."
+    sleep 10
+  done
+  return 1
+}
 
 # ── System packages ──────────────────────────────────────────────────────────
 echo "--- Installing system packages ---"
@@ -48,20 +61,26 @@ for attempt in 1 2 3; do
   echo "apt-get update failed (${attempt}/3), retrying in 10s..."
   sleep 10
 done
-apt-get install -y -qq curl git ca-certificates gnupg jq || fail "apt-get install failed"
+apt_install curl git ca-certificates gnupg jq || fail "apt-get install (base packages) failed after 3 retries"
 
 # ── Node.js 24 ───────────────────────────────────────────────────────────────
 echo "--- Installing Node.js 24 ---"
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
   || fail "NodeSource setup_24.x failed"
-apt-get install -y -qq nodejs || fail "apt-get install nodejs failed"
+apt_install nodejs || fail "apt-get install nodejs failed after 3 retries"
 NODE_BIN=$(command -v node || true)
 [ -n "$NODE_BIN" ] || fail "node binary not found after install"
 echo "Node.js $(node --version) / npm $(npm --version)"
 
 # ── openclaw system user ─────────────────────────────────────────────────────
+# If the user already exists (re-run / image reuse), just keep it. If creation
+# fails for any other reason, fail loudly — silently swallowing this would
+# cause every subsequent chown/runuser to break with confusing errors.
 echo "--- Creating openclaw user ---"
-useradd -r -m -d /home/openclaw -s /bin/bash openclaw 2>/dev/null || true
+if ! id openclaw >/dev/null 2>&1; then
+  useradd -r -m -d /home/openclaw -s /bin/bash openclaw \
+    || fail "useradd openclaw failed"
+fi
 
 # ── Setup wizard install (early — before the slow openclaw install) ──────────
 # Starting the wizard BEFORE installing OpenClaw means that if the OpenClaw
@@ -165,7 +184,14 @@ SVC
 
 systemctl daemon-reload
 systemctl enable --now openclaw-setup.service
-sleep 2
+
+# Poll for the service to come up. `Type=simple` units flip to active as soon
+# as ExecStart spawns, so this usually settles in well under a second — but a
+# fixed sleep is fragile on a slow VM.
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if systemctl is-active --quiet openclaw-setup.service; then break; fi
+  sleep 1
+done
 systemctl is-active --quiet openclaw-setup.service \
   || fail "openclaw-setup.service did not start — see journalctl -u openclaw-setup"
 echo "openclaw-setup running: http://${VM_IP}:8080"

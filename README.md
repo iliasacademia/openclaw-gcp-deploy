@@ -76,7 +76,7 @@ The dashboard token is the only thing protecting your gateway — bookmark the l
 | Vertex AI (Gemini 3.1 Pro) | Pay per token — low for personal use |
 | **$300 free credits** | Covers months of testing |
 
-To avoid charges after testing, stop or delete the VM from the [GCP Console](https://console.cloud.google.com/compute).
+To avoid charges after testing, run `bash cleanup.sh` from the same Cloud Shell session, or delete the project at the [GCP Console](https://console.cloud.google.com/cloud-resource-manager).
 
 ---
 
@@ -86,6 +86,7 @@ To avoid charges after testing, stop or delete the VM from the [GCP Console](htt
 openclaw-gcp-deploy/
 ├── deploy.sh              # Main script — runs in Cloud Shell
 ├── startup.sh             # Runs on VM at first boot
+├── cleanup.sh             # Tears down the project when you're done
 ├── cloudshell_tutorial.md # Tutorial shown in the Cloud Shell pane
 └── setup-server/
     ├── server.js          # Express setup wizard (port 8080)
