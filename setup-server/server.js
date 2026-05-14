@@ -5,6 +5,8 @@ const fs           = require('fs');
 const path         = require('path');
 const { execSync } = require('child_process');
 
+const PKG_VERSION = require('./package.json').version;
+
 // ── Config ───────────────────────────────────────────────────────────────────
 const PORT             = parseInt(process.env.PORT || '8080', 10);
 const VM_IP            = process.env.VM_IP || 'localhost';
@@ -170,6 +172,7 @@ app.get('/api/diagnostics', requireToken, (_req, res) => {
   }
 
   res.json({
+    setupServerVersion: PKG_VERSION,
     timestamp:   new Date().toISOString(),
     vmIp:        VM_IP,
     projectId:   PROJECT_ID,
@@ -231,6 +234,7 @@ app.post('/api/telegram', requireToken, (req, res) => {
 // ── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
   logEvent('info', 'server_listening', {
+    version:     PKG_VERSION,
     port:        PORT,
     vmIp:        VM_IP,
     projectId:   PROJECT_ID,

@@ -178,6 +178,7 @@ async function loadDiagnostics() {
       `IP:         ${d.vmIp}\n` +
       `Project:    ${d.projectId}\n` +
       `Region:     ${d.region}\n` +
+      `Wizard ver: ${d.setupServerVersion || '?'}\n` +
       `Time:       ${d.timestamp}`);
 
     setText('diag-log-gateway', d.logs?.gateway || '(no logs yet)');
