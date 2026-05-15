@@ -72,6 +72,45 @@
 
       </div>
 
+      <!-- Step 2: Pair your account so the bot will actually reply -->
+      <div id="screen-pairing" class="screen">
+
+        <div class="step-header">
+          <div class="step-pill">Step 2 of 2</div>
+          <h1>Pair your Telegram account</h1>
+          <p class="subtitle">
+            Your bot is connected, but OpenClaw only replies to senders you've
+            paired. Open Telegram, send <code>/start</code> to your bot, and
+            return here — your pairing request will appear below.
+          </p>
+        </div>
+
+        <div id="pairing-waiting" class="pairing-state">
+          <div class="spinner spinner-small"></div>
+          <p class="hint">Waiting for your <code>/start</code> message…</p>
+        </div>
+
+        <div id="pairing-pending" class="pairing-state hidden">
+          <p class="pairing-prompt">
+            Pairing request received from Telegram user
+            <strong id="pairing-user-id"></strong>.
+          </p>
+          <div class="pairing-card">
+            <span class="pairing-label">Code</span>
+            <code id="pairing-code"></code>
+          </div>
+          <button id="btn-approve" class="btn btn-primary btn-large" onclick="approvePairing()">
+            Approve →
+          </button>
+          <p id="pairing-error" class="field-error hidden"></p>
+        </div>
+
+        <p class="diagnostics-link">
+          Already paired? <a href="#" onclick="skipPairing(event)">Skip to dashboard</a>
+        </p>
+
+      </div>
+
       <!-- Unauthorized -->
       <div id="screen-unauthorized" class="screen">
         <div class="step-header" style="text-align: center;">

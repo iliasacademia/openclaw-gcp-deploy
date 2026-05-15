@@ -61,9 +61,12 @@ async function init() {
     setDashboardLink(data.dashboardUrl);
 
     setOauthLinks(data.projectId);
+    setDashboardLink(data.dashboardUrl);
 
     if (data.telegramConfigured) {
-      showScreen('screen-done');
+      // Telegram is wired up, but the user may not have paired yet. Route to
+      // the pairing step, which auto-advances when they hit Approve or Skip.
+      enterPairingScreen();
     } else {
       showScreen('screen-telegram');
     }
@@ -123,7 +126,9 @@ async function submitTelegram() {
     setBadge('Running', 'running');
     setDashboardLink(data.dashboardUrl);
     if (data.projectId) setOauthLinks(data.projectId);
-    showScreen('screen-done');
+    // Don't go straight to "done" — the user still has to send /start and
+    // approve their pairing for the bot to actually respond.
+    enterPairingScreen();
 
   } catch (err) {
     showError('Network error — is OpenClaw still starting? Wait 30 seconds and try again.');
@@ -135,6 +140,85 @@ async function submitTelegram() {
 function setDashboardLink(url) {
   const a = document.getElementById('dashboard-link');
   if (a && url) a.href = url;
+}
+
+// ── Pairing flow ─────────────────────────────────────────────────────────────
+let pairingPollTimer = null;
+let currentPairingCode = null;
+
+function enterPairingScreen() {
+  showScreen('screen-pairing');
+  setBadge('Running', 'running');
+  document.getElementById('pairing-waiting').classList.remove('hidden');
+  document.getElementById('pairing-pending').classList.add('hidden');
+  currentPairingCode = null;
+  pollForPairings();
+}
+
+function leavePairingScreen() {
+  if (pairingPollTimer) { clearTimeout(pairingPollTimer); pairingPollTimer = null; }
+}
+
+async function pollForPairings() {
+  try {
+    const res  = await api('/api/pairings');
+    const data = await res.json();
+    const pending = data.pending || [];
+
+    if (pending.length > 0) {
+      const item = pending[0];
+      const code = item.code || item.pairingCode || item.token || '';
+      const user = item.userId || item.sender || item.from || item.id || 'new sender';
+      if (code) {
+        currentPairingCode = code;
+        document.getElementById('pairing-code').textContent    = code;
+        document.getElementById('pairing-user-id').textContent = user;
+        document.getElementById('pairing-waiting').classList.add('hidden');
+        document.getElementById('pairing-pending').classList.remove('hidden');
+        return; // stop polling; wait for user click
+      }
+    }
+  } catch (_) {
+    // Network blips happen during boot — keep polling.
+  }
+  pairingPollTimer = setTimeout(pollForPairings, 3000);
+}
+
+async function approvePairing() {
+  if (!currentPairingCode) return;
+  const btn = document.getElementById('btn-approve');
+  const err = document.getElementById('pairing-error');
+  err.classList.add('hidden');
+  btn.disabled = true;
+  btn.textContent = 'Approving…';
+  try {
+    const res = await api('/api/pairings/approve', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ code: currentPairingCode }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      err.textContent = data.error || 'Approve failed — try again.';
+      err.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Approve →';
+      return;
+    }
+    leavePairingScreen();
+    showScreen('screen-done');
+  } catch (e) {
+    err.textContent = 'Network error: ' + e.message;
+    err.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Approve →';
+  }
+}
+
+function skipPairing(ev) {
+  if (ev) ev.preventDefault();
+  leavePairingScreen();
+  showScreen('screen-done');
 }
 
 // Build deep links into the user's own GCP project for the OAuth consent

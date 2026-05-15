@@ -125,6 +125,33 @@ function validateTelegramToken(token) {
     && /^\d{6,15}:[A-Za-z0-9_-]{20,}$/.test(token.trim());
 }
 
+// Pairing codes from OpenClaw are uppercase alphanumeric, currently 8 chars.
+// Accept a generous range to stay forward-compatible.
+const PAIRING_CODE_RE = /^[A-Z0-9]{4,32}$/;
+
+function pairingList() {
+  // openclaw CLI talks to the gateway via WebSocket RPC, using auth from
+  // ~/.openclaw/openclaw.json (which we own). Our service runs as the
+  // openclaw user, so HOME is already /home/openclaw.
+  const r = safeExec(
+    `env HOME=/home/openclaw OPENCLAW_NO_RESPAWN=1 openclaw pairing list telegram --json`,
+    8000
+  );
+  if (!r.ok) return { ok: false, err: r.err };
+  try { return { ok: true, list: JSON.parse(r.out) }; }
+  catch (e) { return { ok: false, err: 'parse: ' + e.message, raw: r.out }; }
+}
+
+function pairingApprove(code) {
+  // --notify tells OpenClaw to message the user back on Telegram confirming
+  // they're approved.
+  const r = safeExec(
+    `env HOME=/home/openclaw OPENCLAW_NO_RESPAWN=1 openclaw pairing approve telegram ${code} --notify`,
+    15000
+  );
+  return { ok: r.ok, out: r.out, err: r.err };
+}
+
 // ── Routes ───────────────────────────────────────────────────────────────────
 
 // Health probe — no auth. deploy.sh polls this to know the VM is up.
@@ -187,6 +214,37 @@ app.get('/api/diagnostics', requireToken, (_req, res) => {
       setup:      journalTail('openclaw-setup', 40),
     },
   });
+});
+
+// List pending Telegram pairing requests.
+app.get('/api/pairings', requireToken, (_req, res) => {
+  const r = pairingList();
+  if (!r.ok) {
+    logEvent('warn', 'pairing_list_failed', { err: r.err });
+    return res.status(200).json({ pending: [], error: r.err });
+  }
+  // openclaw returns either an array of pending objects or an object with
+  // an items array — normalise both shapes to { pending: [...] }.
+  const items = Array.isArray(r.list) ? r.list
+                : Array.isArray(r.list?.items) ? r.list.items
+                : Array.isArray(r.list?.pending) ? r.list.pending
+                : [];
+  res.json({ pending: items });
+});
+
+// Approve a pending pairing code.
+app.post('/api/pairings/approve', requireToken, (req, res) => {
+  const code = String(req.body?.code || '').trim().toUpperCase();
+  if (!PAIRING_CODE_RE.test(code)) {
+    return res.status(400).json({ error: 'Invalid pairing code format.' });
+  }
+  const r = pairingApprove(code);
+  if (!r.ok) {
+    logEvent('warn', 'pairing_approve_failed', { code, err: r.err });
+    return res.status(500).json({ error: r.err || 'pairing approve failed', detail: r.out });
+  }
+  logEvent('info', 'pairing_approved', { code });
+  res.json({ success: true, output: r.out });
 });
 
 // Save Telegram bot token.
