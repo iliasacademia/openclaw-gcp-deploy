@@ -42,6 +42,12 @@ REGION=$(echo "$ZONE" | sed 's/-[a-z]$//')
 [ -n "$PROJECT_ID" ]    || fail "metadata: project ID unavailable (needed for Vertex AI)"
 [ -n "$ZONE" ]          || fail "metadata: zone unavailable"
 
+# sslip.io maps <dashed-ip>.sslip.io → that IP. We compute the hostname once
+# here and reuse it for Caddy, the openclaw.json allowedOrigins, and the
+# setup-server's DASHBOARD_BASE_URL.
+VM_IP_DASHED=$(echo "$VM_IP" | tr '.' '-')
+SSLIP_DOMAIN="${VM_IP_DASHED}.sslip.io"
+
 echo "PROJECT_ID=${PROJECT_ID}  REGION=${REGION}  ZONE=${ZONE}  VM_IP=${VM_IP}"
 echo "REPO_URL=${REPO_URL}"
 
@@ -116,15 +122,87 @@ REGION=${REGION}
 OPENCLAW_CONFIG=/home/openclaw/.openclaw/openclaw.json
 SETUP_TOKEN=${SETUP_TOKEN}
 GATEWAY_TOKEN=${GATEWAY_TOKEN}
+DASHBOARD_BASE_URL=https://${SSLIP_DOMAIN}
 STARTUP_LOG=/var/log/openclaw-startup.log
 SENV
 chmod 0600 /opt/openclaw-deploy/setup-server/.env
 
-# Write openclaw.json now (before the slow npm install -g openclaw). This way
-# the setup wizard's /api/status and /api/telegram never see a missing config
-# — eliminating a race where a fast user opens the wizard before the gateway
-# binary is installed. The schema is fixed and the gateway token is known
-# from VM metadata, so we can write the final shape upfront.
+# ── Caddy: auto-HTTPS for the gateway dashboard ──────────────────────────────
+# OpenClaw's Control UI calls Web Crypto APIs that the browser BLOCKS outside
+# a secure context (HTTPS or localhost). Plain HTTP at the VM's public IP
+# fails that check before any backend logic runs, so the dashboard never
+# loads from a remote browser — even with controlUi.allowInsecureAuth: true,
+# which only helps loopback access.
+#
+# Fix: a real domain + real cert. sslip.io is a free DNS service that resolves
+# <ip-with-dashes>.sslip.io → that IP. Caddy fetches a Let's Encrypt cert for
+# that hostname automatically. Result: a valid HTTPS URL with zero domain
+# registration and zero cert management.
+echo "--- Installing Caddy for auto-HTTPS ---"
+CADDY_VERSION=2.9.1
+case "$(dpkg --print-architecture)" in
+  amd64) CADDY_ARCH=amd64 ;;
+  arm64) CADDY_ARCH=arm64 ;;
+  *)     fail "unsupported arch for Caddy" ;;
+esac
+curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_${CADDY_ARCH}.tar.gz" \
+  | tar -xzC /tmp caddy 2>/dev/null
+[ -f /tmp/caddy ] || fail "Caddy download failed"
+mv /tmp/caddy /usr/local/bin/caddy
+chmod +x /usr/local/bin/caddy
+
+if ! id caddy >/dev/null 2>&1; then
+  useradd --system --home /var/lib/caddy --shell /usr/sbin/nologin caddy \
+    || fail "useradd caddy failed"
+fi
+mkdir -p /etc/caddy /var/lib/caddy /var/log/caddy
+chown -R caddy:caddy /var/lib/caddy /var/log/caddy
+
+echo "Dashboard HTTPS host: ${SSLIP_DOMAIN}"
+
+cat > /etc/caddy/Caddyfile << CADDYFILE
+{
+  email admin@${SSLIP_DOMAIN}
+}
+
+${SSLIP_DOMAIN} {
+  reverse_proxy localhost:18789
+}
+CADDYFILE
+
+cat > /etc/systemd/system/caddy.service << SVC
+[Unit]
+Description=Caddy
+Documentation=https://caddyserver.com/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=caddy
+Group=caddy
+Environment=HOME=/var/lib/caddy
+ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+LimitNPROC=512
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
+systemctl daemon-reload
+systemctl enable --now caddy.service
+
+# Write openclaw.json now (before the slow npm install -g openclaw). The
+# wizard's /api/status and /api/telegram never see a missing config and a
+# fast user can't race ahead of the gateway binary install.
 #
 # Vertex project/location come from env vars on the gateway service unit, NOT
 # this file — the provider config schema rejects unknown keys.
@@ -141,9 +219,9 @@ cat > /home/openclaw/.openclaw/openclaw.json << OCCONF
     },
     "controlUi": {
       "allowedOrigins": [
-        "http://${VM_IP}:18789"
-      ],
-      "allowInsecureAuth": true
+        "http://${VM_IP}:18789",
+        "https://${SSLIP_DOMAIN}"
+      ]
     }
   },
   "agents": {

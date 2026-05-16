@@ -19,10 +19,12 @@ const STARTUP_LOG      = process.env.STARTUP_LOG || '/var/log/openclaw-startup.l
 const STARTUP_FAILED   = '/var/log/openclaw-startup.failed';
 const SERVICE_NAME     = 'openclaw-gateway';
 
-// Dashboard URL embeds the gateway token so the user can click straight through.
+// HTTPS dashboard URL via sslip.io + Caddy. Falls back to plain HTTP for
+// dev/test environments where Caddy isn't running.
+const DASHBOARD_BASE_URL = process.env.DASHBOARD_BASE_URL || `http://${VM_IP}:18789`;
 const DASHBOARD_URL = GATEWAY_TOKEN
-  ? `http://${VM_IP}:18789/?token=${encodeURIComponent(GATEWAY_TOKEN)}`
-  : `http://${VM_IP}:18789`;
+  ? `${DASHBOARD_BASE_URL}/?token=${encodeURIComponent(GATEWAY_TOKEN)}`
+  : DASHBOARD_BASE_URL;
 
 // Fail closed: refuse to start if the setup token is missing. The wizard
 // writes config and restarts a service; an open endpoint here is a serious

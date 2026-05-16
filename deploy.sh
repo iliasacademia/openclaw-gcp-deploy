@@ -202,13 +202,15 @@ gcloud compute firewall-rules create allow-openclaw \
   --priority=1000 \
   --network=default \
   --action=ALLOW \
-  --rules=tcp:8080,tcp:18789 \
+  --rules=tcp:80,tcp:443,tcp:8080,tcp:18789 \
   --source-ranges=0.0.0.0/0 \
   --target-tags=openclaw \
   --quiet
 
+success "Port 80    → Caddy / Let's Encrypt ACME"
+success "Port 443   → OpenClaw dashboard (HTTPS via sslip.io)"
 success "Port 8080  → Setup wizard"
-success "Port 18789 → OpenClaw dashboard"
+success "Port 18789 → Gateway (proxied by Caddy)"
 
 # ── Wait for setup wizard ────────────────────────────────────────────────────
 header "Waiting for VM to provision OpenClaw"
