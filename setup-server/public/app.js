@@ -4,7 +4,13 @@
 // server rejects every API call.
 const SETUP_TOKEN = new URLSearchParams(window.location.search).get('token') || '';
 
+const LS_BOT_USERNAME = 'openclaw.botUsername';
+
 let previousScreenId = null;
+let pairingPollTimer = null;
+let readyPollTimer   = null;
+let currentPairingCode = null;
+let cachedProjectId    = null;
 
 // ── Screens ──────────────────────────────────────────────────────────────────
 function showScreen(id) {
@@ -58,10 +64,9 @@ async function init() {
     if (data.openclawRunning) setBadge('Running', 'running');
     else                      setBadge('Starting…', 'starting');
 
+    cachedProjectId = data.projectId;
     setDashboardLink(data.dashboardUrl);
-
     setOauthLinks(data.projectId);
-    setDashboardLink(data.dashboardUrl);
 
     if (data.telegramConfigured) {
       // Telegram is wired up, but the user may not have paired yet. Route to
@@ -78,14 +83,14 @@ async function init() {
 }
 
 // ── Telegram form ────────────────────────────────────────────────────────────
-function clearError() {
+function clearTelegramError() {
   const err = document.getElementById('telegram-error');
   const inp = document.getElementById('telegram-token');
   if (err) { err.textContent = ''; err.classList.add('hidden'); }
   if (inp) inp.classList.remove('error');
 }
 
-function showError(msg) {
+function showTelegramError(msg) {
   const err = document.getElementById('telegram-error');
   const inp = document.getElementById('telegram-token');
   if (err) { err.textContent = msg; err.classList.remove('hidden'); }
@@ -93,20 +98,23 @@ function showError(msg) {
 }
 
 async function submitTelegram() {
-  clearError();
+  clearTelegramError();
 
   const inp   = document.getElementById('telegram-token');
   const btn   = document.getElementById('btn-telegram');
   const token = (inp?.value || '').trim();
 
   if (!token) {
-    showError('Please paste your bot token before continuing.');
+    showTelegramError('Please paste your bot token before continuing.');
     inp?.focus();
     return;
   }
 
+  // Loading state: keep user informed about what we're doing. This call
+  // does (1) write the config, (2) restart the gateway, (3) look up the bot
+  // username on Telegram. 1-2 seconds typically.
   btn.disabled    = true;
-  btn.textContent = 'Connecting…';
+  btn.textContent = 'Connecting your bot…';
 
   try {
     const res  = await api('/api/telegram', {
@@ -117,7 +125,7 @@ async function submitTelegram() {
     const data = await res.json();
 
     if (!res.ok || data.error) {
-      showError(data.error || 'Something went wrong — please check the token and try again.');
+      showTelegramError(data.error || 'Something went wrong — please check the token and try again.');
       btn.disabled    = false;
       btn.textContent = 'Connect →';
       return;
@@ -125,13 +133,19 @@ async function submitTelegram() {
 
     setBadge('Running', 'running');
     setDashboardLink(data.dashboardUrl);
-    if (data.projectId) setOauthLinks(data.projectId);
+    if (data.projectId) {
+      cachedProjectId = data.projectId;
+      setOauthLinks(data.projectId);
+    }
+    if (data.botUsername) {
+      try { localStorage.setItem(LS_BOT_USERNAME, data.botUsername); } catch {}
+    }
     // Don't go straight to "done" — the user still has to send /start and
     // approve their pairing for the bot to actually respond.
     enterPairingScreen();
 
   } catch (err) {
-    showError('Network error — is OpenClaw still starting? Wait 30 seconds and try again.');
+    showTelegramError('Network error — is OpenClaw still starting? Wait 30 seconds and try again.');
     btn.disabled    = false;
     btn.textContent = 'Connect →';
   }
@@ -140,19 +154,41 @@ async function submitTelegram() {
 function setDashboardLink(url) {
   const a = document.getElementById('dashboard-link');
   if (a && url) a.href = url;
+  const a2 = document.getElementById('g-open-dashboard');
+  if (a2 && url) a2.href = url;
 }
 
 // ── Pairing flow ─────────────────────────────────────────────────────────────
-let pairingPollTimer = null;
-let currentPairingCode = null;
-
 function enterPairingScreen() {
   showScreen('screen-pairing');
   setBadge('Running', 'running');
   document.getElementById('pairing-waiting').classList.remove('hidden');
   document.getElementById('pairing-pending').classList.add('hidden');
   currentPairingCode = null;
+  populateBotLink();
   pollForPairings();
+}
+
+function populateBotLink() {
+  // We saved the bot's username when /api/telegram returned it. If present,
+  // build a tg://resolve link (works on desktop and mobile Telegram clients)
+  // so the user can one-click to their bot with /start pre-triggered.
+  let username = null;
+  try { username = localStorage.getItem(LS_BOT_USERNAME); } catch {}
+
+  const btnEl  = document.getElementById('bot-link');
+  const fbEl   = document.getElementById('bot-link-fallback');
+  const fbName = document.getElementById('bot-link-fallback-name');
+
+  if (username) {
+    btnEl.href = `tg://resolve?domain=${encodeURIComponent(username)}&start=1`;
+    btnEl.classList.remove('hidden');
+    if (fbName) fbName.textContent = '@' + username;
+    if (fbEl)   fbEl.classList.remove('hidden');
+  } else {
+    btnEl.classList.add('hidden');
+    if (fbEl) fbEl.classList.add('hidden');
+  }
 }
 
 function leavePairingScreen() {
@@ -202,33 +238,147 @@ async function approvePairing() {
       err.textContent = data.error || 'Approve failed — try again.';
       err.classList.remove('hidden');
       btn.disabled = false;
-      btn.textContent = 'Approve →';
+      btn.textContent = 'Approve this user →';
       return;
     }
     leavePairingScreen();
-    showScreen('screen-done');
+    enterDoneScreen();
   } catch (e) {
     err.textContent = 'Network error: ' + e.message;
     err.classList.remove('hidden');
     btn.disabled = false;
-    btn.textContent = 'Approve →';
+    btn.textContent = 'Approve this user →';
   }
 }
 
 function skipPairing(ev) {
   if (ev) ev.preventDefault();
   leavePairingScreen();
+  enterDoneScreen();
+}
+
+// ── Done screen with dashboard-readiness gate ────────────────────────────────
+function enterDoneScreen() {
+  showScreen('screen-done');
+  // Initial state: hide the dashboard button, show "Finalising…" spinner.
+  // Then poll /api/dashboard-ready until it returns ready:true.
+  document.getElementById('dashboard-link').classList.add('hidden');
+  document.getElementById('dashboard-not-ready').classList.remove('hidden');
+  pollDashboardReady();
+}
+
+function leaveDoneScreen() {
+  if (readyPollTimer) { clearTimeout(readyPollTimer); readyPollTimer = null; }
+}
+
+async function pollDashboardReady() {
+  try {
+    const res = await api('/api/dashboard-ready');
+    const d   = await res.json();
+    if (d.ready) {
+      document.getElementById('dashboard-not-ready').classList.add('hidden');
+      const link = document.getElementById('dashboard-link');
+      if (d.dashboardUrl) link.href = d.dashboardUrl;
+      link.classList.remove('hidden');
+      return; // stop polling
+    }
+  } catch (_) {
+    // Keep polling.
+  }
+  readyPollTimer = setTimeout(pollDashboardReady, 3000);
+}
+
+// ── Google / gog OAuth panel ─────────────────────────────────────────────────
+function enterGoogleScreen(ev) {
+  if (ev) ev.preventDefault();
+  showScreen('screen-google');
+  setOauthLinks(cachedProjectId);
+  document.getElementById('g-saved').classList.add('hidden');
+  document.getElementById('g-saving').classList.add('hidden');
+  const err = document.getElementById('g-error');
+  if (err) err.classList.add('hidden');
+  const ta = document.getElementById('g-json');
+  if (ta) ta.value = '';
+  const btn = document.getElementById('g-save');
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Save credentials →';
+  }
+}
+
+function exitGoogleScreen(ev) {
+  if (ev) ev.preventDefault();
   showScreen('screen-done');
 }
 
-// Build deep links into the user's own GCP project for the OAuth consent
-// screen + credentials pages. projectId is reported by /api/status.
+async function saveGoogleCredentials() {
+  const ta  = document.getElementById('g-json');
+  const btn = document.getElementById('g-save');
+  const err = document.getElementById('g-error');
+
+  err.classList.add('hidden');
+  const raw = (ta?.value || '').trim();
+  if (!raw) {
+    err.textContent = 'Please paste the JSON before clicking Save.';
+    err.classList.remove('hidden');
+    return;
+  }
+
+  // Loading state: hide form, show spinner.
+  btn.disabled    = true;
+  btn.textContent = 'Saving…';
+  document.getElementById('g-saving').classList.remove('hidden');
+
+  try {
+    const res  = await api('/api/gog/credentials', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ clientSecret: raw }),
+    });
+    const data = await res.json();
+    document.getElementById('g-saving').classList.add('hidden');
+
+    if (!res.ok || data.error) {
+      err.textContent = data.error || 'Save failed — check the JSON and try again.';
+      err.classList.remove('hidden');
+      btn.disabled    = false;
+      btn.textContent = 'Save credentials →';
+      return;
+    }
+
+    // Success — flip to the "now go to the dashboard" panel.
+    document.getElementById('g-saved').classList.remove('hidden');
+    // Hide the input form so it's clear that step is done.
+    const stepsEl = document.querySelector('#screen-google .g-steps');
+    if (stepsEl) stepsEl.style.opacity = '0.4';
+
+    if (data.warning) {
+      err.textContent = data.warning;
+      err.className   = 'field-warning';
+      err.classList.remove('hidden');
+    }
+
+  } catch (e) {
+    document.getElementById('g-saving').classList.add('hidden');
+    err.textContent = 'Network error: ' + e.message;
+    err.classList.remove('hidden');
+    btn.disabled    = false;
+    btn.textContent = 'Save credentials →';
+  }
+}
+
+// Deep links into the user's own GCP project for the OAuth consent screen +
+// credentials pages. Called whenever we know the project id.
 function setOauthLinks(projectId) {
   if (!projectId) return;
-  const consent     = document.getElementById('oauth-consent-link');
-  const credentials = document.getElementById('oauth-credentials-link');
-  if (consent)     consent.href     = `https://console.cloud.google.com/apis/credentials/consent?project=${encodeURIComponent(projectId)}`;
-  if (credentials) credentials.href = `https://console.cloud.google.com/apis/credentials?project=${encodeURIComponent(projectId)}`;
+  const set = (id, url) => {
+    const el = document.getElementById(id);
+    if (el) el.href = url;
+  };
+  set('oauth-consent-link',    `https://console.cloud.google.com/apis/credentials/consent?project=${encodeURIComponent(projectId)}`);
+  set('oauth-credentials-link', `https://console.cloud.google.com/apis/credentials?project=${encodeURIComponent(projectId)}`);
+  set('g-consent-link',         `https://console.cloud.google.com/apis/credentials/consent?project=${encodeURIComponent(projectId)}`);
+  set('g-credentials-link',     `https://console.cloud.google.com/apis/credentials/oauthclient?project=${encodeURIComponent(projectId)}`);
 }
 
 // ── Diagnostics ──────────────────────────────────────────────────────────────
@@ -298,7 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const inp = document.getElementById('telegram-token');
   if (inp) {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') submitTelegram(); });
-    inp.addEventListener('input', clearError);
+    inp.addEventListener('input', clearTelegramError);
   }
   init();
 });

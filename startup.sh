@@ -123,6 +123,7 @@ OPENCLAW_CONFIG=/home/openclaw/.openclaw/openclaw.json
 SETUP_TOKEN=${SETUP_TOKEN}
 GATEWAY_TOKEN=${GATEWAY_TOKEN}
 DASHBOARD_BASE_URL=https://${SSLIP_DOMAIN}
+SSLIP_DOMAIN=${SSLIP_DOMAIN}
 STARTUP_LOG=/var/log/openclaw-startup.log
 SENV
 chmod 0600 /opt/openclaw-deploy/setup-server/.env

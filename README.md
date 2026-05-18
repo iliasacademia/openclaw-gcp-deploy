@@ -59,10 +59,12 @@ Press Enter and sit back — it takes about 5 minutes and asks no questions.
 
 ## After deploy
 
-1. Visit the setup wizard URL printed at the end (e.g. `http://YOUR_IP:8080?token=...`)
-2. Follow the one-step wizard to connect your Telegram bot
-3. Click "Open OpenClaw Dashboard" — the link includes your gateway token
-4. From the dashboard, connect Google (Drive, Gmail, Calendar) via the **gog** skill
+1. Open the setup wizard URL printed at the end (e.g. `http://YOUR_IP:8080?token=...`) in your browser.
+   - **Use a regular Chrome/Firefox/Safari window — not Incognito.** Incognito mode blocks plain HTTP and will show a "site doesn't support secure connection" warning. (The wizard itself is HTTP because we don't have a domain; the OpenClaw dashboard *is* HTTPS via Let's Encrypt.)
+2. Step 1 of 2 — paste your Telegram bot token (the wizard explains how to get one from @BotFather).
+3. Step 2 of 2 — click the **Open my bot in Telegram** button and send `/start`. The wizard polls for your pairing request and shows an **Approve** button when it arrives. One click and you're done.
+4. Click **Open OpenClaw Dashboard** — the link includes your gateway token, and Caddy provides a valid Let's Encrypt cert so there's no browser warning.
+5. (Optional) Click **Connect Google** in the wizard for Gmail/Drive/Calendar access. The wizard walks you through OAuth setup in Google Cloud Console.
 
 The dashboard token is the only thing protecting your gateway — bookmark the link with the token included, and don't share it.
 

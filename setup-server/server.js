@@ -18,6 +18,8 @@ const OPENCLAW_CONFIG  = process.env.OPENCLAW_CONFIG || '/home/openclaw/.opencla
 const STARTUP_LOG      = process.env.STARTUP_LOG || '/var/log/openclaw-startup.log';
 const STARTUP_FAILED   = '/var/log/openclaw-startup.failed';
 const SERVICE_NAME     = 'openclaw-gateway';
+const SSLIP_DOMAIN     = process.env.SSLIP_DOMAIN || '';
+const GOG_CREDS_PATH   = '/home/openclaw/.gog/client_secret.json';
 
 // HTTPS dashboard URL via sslip.io + Caddy. Falls back to plain HTTP for
 // dev/test environments where Caddy isn't running.
@@ -125,6 +127,45 @@ function validateTelegramToken(token) {
   // we accept 6-15 to handle old/new ranges. Secret is base64url-ish, ~35 chars.
   return typeof token === 'string'
     && /^\d{6,15}:[A-Za-z0-9_-]{20,}$/.test(token.trim());
+}
+
+// Ask Telegram's getMe for the bot's username so we can build a tg:// deep
+// link the user can one-click to open their bot. Best-effort — if Telegram
+// is unreachable or the token is wrong (we already format-validated it but
+// it could still be revoked), we return null and the UI falls back to text
+// instructions.
+async function fetchBotUsername(token) {
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    const d = await r.json();
+    if (d.ok && d.result?.username) return d.result.username;
+    return null;
+  } catch (err) {
+    logEvent('warn', 'telegram_getme_failed', { err: err.message });
+    return null;
+  }
+}
+
+// Ask Caddy whether the HTTPS dashboard URL is responding. Returns true once
+// the TLS cert is provisioned AND the gateway is reachable through Caddy's
+// reverse-proxy. We use this to gate the "Open Dashboard" button so users
+// never hit raw browser cert errors.
+async function checkDashboardReady() {
+  if (!SSLIP_DOMAIN) return true; // dev/local — assume ready
+  try {
+    const r = await fetch(`https://${SSLIP_DOMAIN}/`, {
+      signal: AbortSignal.timeout(4000),
+      redirect: 'manual',
+    });
+    // Any HTTP response (200, 301, 401, even 404) means TLS handshake
+    // succeeded and Caddy is proxying. A TLS error throws and lands in
+    // the catch.
+    return r.status > 0;
+  } catch (err) {
+    return false;
+  }
 }
 
 // Pairing codes from OpenClaw are uppercase alphanumeric, currently 8 chars.
@@ -249,8 +290,65 @@ app.post('/api/pairings/approve', requireToken, (req, res) => {
   res.json({ success: true, output: r.out });
 });
 
+// Is the OpenClaw dashboard reachable over HTTPS yet?
+// Used by the wizard to wait for Caddy's first Let's Encrypt cert before
+// linking the user out — prevents the "browser cert error" UX.
+app.get('/api/dashboard-ready', requireToken, async (_req, res) => {
+  const ready = await checkDashboardReady();
+  res.json({ ready, dashboardUrl: DASHBOARD_URL });
+});
+
+// Save Google OAuth client_secret.json so gog can use it.
+// This is the file the user downloads from GCP Console after creating an
+// OAuth Desktop client. We write it where gog expects it and (best-effort)
+// register it with gog. The user still has to complete the OAuth approval
+// flow itself from the OpenClaw dashboard — that part requires a browser
+// click that only Google can render.
+app.post('/api/gog/credentials', requireToken, (req, res) => {
+  const raw = (req.body?.clientSecret || '').trim();
+
+  let parsed;
+  try { parsed = JSON.parse(raw); }
+  catch (e) {
+    return res.status(400).json({
+      error: 'That doesn\'t look like JSON. Open client_secret.json in a text editor and paste its full contents.',
+    });
+  }
+  const clientId = parsed.installed?.client_id || parsed.web?.client_id;
+  if (!clientId) {
+    return res.status(400).json({
+      error: 'JSON is missing an OAuth client_id. Make sure you downloaded an OAuth client (Desktop app), not a service-account key.',
+    });
+  }
+
+  try {
+    const dir = path.dirname(GOG_CREDS_PATH);
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(GOG_CREDS_PATH, raw, { mode: 0o600 });
+  } catch (err) {
+    logEvent('error', 'gog_creds_write_failed', { err: err.message });
+    return res.status(500).json({ error: 'Could not save credentials: ' + err.message });
+  }
+
+  // Tell gog about the credentials. If gog isn't installed (some
+  // deploys may skip it), surface a clear message.
+  const r = safeExec(`env HOME=/home/openclaw gog auth credentials ${GOG_CREDS_PATH}`, 10000);
+  if (!r.ok) {
+    logEvent('warn', 'gog_auth_credentials_failed', { err: r.err });
+    // Still consider the file save a success — the user can finish via the
+    // dashboard or SSH if gog cli has issues.
+    return res.json({
+      success: true,
+      gogConfigured: false,
+      warning: 'Saved credentials to ' + GOG_CREDS_PATH + ', but `gog auth credentials` reported: ' + (r.err || 'unknown error'),
+    });
+  }
+  logEvent('info', 'gog_credentials_saved', { clientId });
+  res.json({ success: true, gogConfigured: true });
+});
+
 // Save Telegram bot token.
-app.post('/api/telegram', requireToken, (req, res) => {
+app.post('/api/telegram', requireToken, async (req, res) => {
   const token = (req.body?.token || '').trim();
 
   if (!validateTelegramToken(token)) {
@@ -280,6 +378,11 @@ app.post('/api/telegram', requireToken, (req, res) => {
 
   logEvent('info', 'telegram_configured');
 
+  // Look up the bot's username so the wizard can show a one-click
+  // tg://resolve link in the pairing step. Don't fail the request if this
+  // call fails — the wizard falls back to text instructions.
+  const botUsername = await fetchBotUsername(token);
+
   // Restart so the bot connects immediately. Hot-reload also works for some
   // changes, but channel reconnects are more reliable with a fresh process.
   const restarted = restartGateway();
@@ -289,6 +392,7 @@ app.post('/api/telegram', requireToken, (req, res) => {
     restarted,
     dashboardUrl: DASHBOARD_URL,
     projectId: PROJECT_ID,
+    botUsername,
   });
 });
 

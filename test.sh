@@ -138,6 +138,27 @@ check "/api/diagnostics redacts gateway token" \
 check "/api/diagnostics surfaces setupServerVersion" \
   bash -c "echo '$DIAG' | grep -q '\"setupServerVersion\":\"'"
 
+check_code "/api/dashboard-ready responds" 200 \
+  "http://localhost:$PORT/api/dashboard-ready?token=testtoken1234567890"
+
+# /api/gog/credentials with no body → 400
+check_code "/api/gog/credentials rejects empty body" 400 \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{}' \
+  "http://localhost:$PORT/api/gog/credentials?token=testtoken1234567890"
+
+# /api/gog/credentials with invalid JSON → 400
+check_code "/api/gog/credentials rejects bad JSON" 400 \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{"clientSecret":"not-json"}' \
+  "http://localhost:$PORT/api/gog/credentials?token=testtoken1234567890"
+
+# /api/gog/credentials with JSON missing client_id → 400
+check_code "/api/gog/credentials rejects JSON without client_id" 400 \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{"clientSecret":"{\"foo\":\"bar\"}"}' \
+  "http://localhost:$PORT/api/gog/credentials?token=testtoken1234567890"
+
 check "config persisted after /api/telegram (telegram.enabled=true)" \
   python3 -c "import json; c=json.load(open('$CONFIG')); assert c['channels']['telegram']['enabled'] is True"
 

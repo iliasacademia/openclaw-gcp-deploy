@@ -86,9 +86,16 @@
           </p>
         </div>
 
+        <a id="bot-link" href="#" target="_blank" rel="noopener" class="btn btn-primary btn-large bot-link-btn hidden">
+          Open my bot in Telegram →
+        </a>
+        <p id="bot-link-fallback" class="bot-link-fallback hidden">
+          (or open Telegram, find <code id="bot-link-fallback-name"></code>, and send <code>/start</code>)
+        </p>
+
         <div id="pairing-waiting" class="pairing-state">
           <div class="spinner spinner-small"></div>
-          <p class="hint">Send <code>/start</code> to your bot on Telegram. Waiting…</p>
+          <p class="hint">Waiting for your <code>/start</code> message to arrive…</p>
         </div>
 
         <div id="pairing-pending" class="pairing-state hidden">
@@ -131,51 +138,118 @@
         <h1>You're all set!</h1>
         <p class="subtitle">
           OpenClaw is running with Vertex AI (Gemini) and your Telegram bot
-          is connected.
+          is paired. You can now chat with your bot on Telegram.
         </p>
 
-        <a id="dashboard-link" href="#" target="_blank" class="btn btn-primary btn-large">
+        <!-- Dashboard button: gated on /api/dashboard-ready -->
+        <div id="dashboard-not-ready" class="dashboard-not-ready">
+          <div class="spinner spinner-small"></div>
+          <p class="hint">
+            Finalising secure connection for the dashboard…<br/>
+            <span class="dim">(Let's Encrypt cert provisioning, usually ~30s)</span>
+          </p>
+        </div>
+        <a id="dashboard-link" href="#" target="_blank" class="btn btn-primary btn-large hidden">
           Open OpenClaw Dashboard →
         </a>
 
         <div class="next-steps">
-          <h3>What's next</h3>
+          <h3>Optional next steps</h3>
           <ul>
             <li>
-              <strong>Message your bot on Telegram</strong><br/>
-              The first message from a new sender triggers a pairing code —
-              approve it in the dashboard under <em>Access</em>.
-            </li>
-            <li>
               <strong>Connect Google (Gmail, Drive, Calendar)</strong><br/>
-              The <code>gog</code> CLI is pre-installed and the skill is enabled.
-              To finish the OAuth handshake (one-time, ~2 min):
-              <ol class="oauth-steps">
-                <li>
-                  Open <a id="oauth-consent-link" href="#" target="_blank">OAuth consent screen</a>
-                  → choose <em>External</em> → fill the required fields → add yourself as a Test user.
-                </li>
-                <li>
-                  Open <a id="oauth-credentials-link" href="#" target="_blank">Credentials</a>
-                  → <em>Create credentials</em> → <em>OAuth client ID</em> → <em>Desktop app</em> →
-                  download the JSON.
-                </li>
-                <li>
-                  In the OpenClaw dashboard → <em>Skills</em> → <em>gog</em> →
-                  follow the authorise prompts with that JSON.
-                </li>
-              </ol>
+              Add file/email/calendar superpowers to your agent.
+              <button class="btn btn-secondary btn-inline" onclick="enterGoogleScreen(event)">
+                Connect Google →
+              </button>
             </li>
             <li>
               <strong>Explore skills</strong><br/>
               Summarise, search, manage files and more — all from the
-              dashboard's <em>Skills</em> tab.
+              OpenClaw dashboard's <em>Skills</em> tab.
             </li>
           </ul>
         </div>
 
         <p class="diagnostics-link">
           <a href="#" onclick="showDiagnostics(event)">Show diagnostics</a>
+        </p>
+
+      </div>
+
+      <!-- Optional Step: Connect Google (Gmail/Drive/Calendar) -->
+      <div id="screen-google" class="screen">
+
+        <div class="step-header">
+          <h1>Connect Google</h1>
+          <p class="subtitle">
+            This lets OpenClaw read your Gmail, search your Drive, and manage
+            your Calendar. Google requires three short setup steps in their
+            console — we'll guide you through each.
+          </p>
+        </div>
+
+        <ol class="g-steps">
+          <li>
+            <strong>Configure the OAuth consent screen</strong> (one-time).
+            <a id="g-consent-link" href="#" target="_blank" class="btn btn-link">
+              Open in a new tab →
+            </a>
+            <div class="g-detail">
+              On the page that opens: choose <em>External</em> → click Create →
+              fill <em>App name</em> (any name, e.g. "My OpenClaw") and
+              <em>User support email</em> → click Save and Continue → click
+              Save and Continue again on Scopes → on Test users click
+              <em>Add Users</em> and add your own Google account → Save.
+            </div>
+          </li>
+          <li>
+            <strong>Create an OAuth client</strong>.
+            <a id="g-credentials-link" href="#" target="_blank" class="btn btn-link">
+              Open Credentials page →
+            </a>
+            <div class="g-detail">
+              Click <em>+ Create Credentials</em> → <em>OAuth client ID</em> →
+              Application type <strong>Desktop app</strong> → give it any
+              name → Create. A dialog will appear — click
+              <em>Download JSON</em> and save the file.
+            </div>
+          </li>
+          <li>
+            <strong>Paste the JSON below</strong>.
+            <div class="g-detail">
+              Open the downloaded file in any text editor (TextEdit, Notepad,
+              VS Code…), select all, copy, and paste it here:
+            </div>
+            <textarea id="g-json" rows="6" placeholder='{"installed":{"client_id":"...","client_secret":"...","auth_uri":"https://accounts.google.com/o/oauth2/auth",...}}'></textarea>
+            <button id="g-save" class="btn btn-primary btn-large" onclick="saveGoogleCredentials()">
+              Save credentials →
+            </button>
+            <p id="g-error" class="field-error hidden"></p>
+          </li>
+        </ol>
+
+        <div id="g-saving" class="pairing-state hidden">
+          <div class="spinner spinner-small"></div>
+          <p class="hint">Saving your Google credentials…</p>
+        </div>
+
+        <div id="g-saved" class="g-saved hidden">
+          <div class="done-icon">✅</div>
+          <h2>Credentials saved!</h2>
+          <p class="subtitle">
+            Last step: in the OpenClaw dashboard, open
+            <strong>Skills → gog → Authorise</strong>. A Google page will
+            open — sign in with the account you added as a Test user above
+            and approve the requested scopes.
+          </p>
+          <a id="g-open-dashboard" href="#" target="_blank" class="btn btn-primary btn-large">
+            Open OpenClaw Dashboard →
+          </a>
+        </div>
+
+        <p class="diagnostics-link">
+          <a href="#" onclick="exitGoogleScreen(event)">← Back</a>
         </p>
 
       </div>

@@ -165,6 +165,13 @@ ZONES=(us-central1-a us-central1-b us-central1-c us-central1-f
 log "Machine: ${MACHINE_TYPE}  OS: Debian 13  Disk: 20 GB"
 
 ZONE=""
+# Capture stderr to a file so we can parse it for genuine failures (vs
+# transient capacity errors, which we expect and want to suppress). gcloud's
+# default error output is a multi-line YAML dump per zone — overwhelming for
+# a non-technical user who'd think the script was broken.
+CREATE_ERR=$(mktemp)
+trap "rm -f $CREATE_ERR" EXIT
+
 for z in "${ZONES[@]}"; do
   log "Trying zone ${z}..."
   if gcloud compute instances create "$VM_NAME" \
@@ -180,11 +187,18 @@ for z in "${ZONES[@]}"; do
       --scopes="cloud-platform" \
       --metadata="repo-url=${REPO_URL},setup-token=${SETUP_TOKEN},gateway-token=${GATEWAY_TOKEN},gog-keyring=${GOG_KEYRING_PASSWORD}" \
       --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh" \
-      --quiet 2>&1 >/dev/null; then
+      --quiet >/dev/null 2>"$CREATE_ERR"; then
     ZONE="$z"
     break
   fi
-  warn "  zone ${z} unavailable, trying next..."
+  # Detect the specific "zone is full" error and report it cleanly. Anything
+  # else (auth, quota, etc.) is a real failure — print the captured stderr.
+  if grep -q "ZONE_RESOURCE_POOL_EXHAUSTED\|does not have enough resources" "$CREATE_ERR"; then
+    warn "  ${z} is at capacity, trying next zone…"
+  else
+    warn "  ${z} failed for an unexpected reason. Details:"
+    sed 's/^/    /' "$CREATE_ERR"
+  fi
 done
 [ -n "$ZONE" ] || die "Could not create VM in any zone — likely a transient GCP capacity issue. Wait a few minutes and re-run."
 

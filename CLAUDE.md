@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.4.0` · **Last reviewed:** 2026-05-18
+**Current version:** setup-server `1.5.0` · **Last reviewed:** 2026-05-18
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -313,19 +313,20 @@ Those require a real deploy.
 
 ## 9. What's NOT solved / open work
 
-### gog OAuth still needs ~3 manual clicks in the Google Console
-Google requires UI interaction for OAuth consent screen setup. The
-wizard's done-screen has deep links to the right pages in the user's
-own project — but the user still has to:
-1. Configure consent screen (External, fill required fields, add self
-   as Test user)
-2. Create OAuth client (Desktop type, download JSON)
-3. Paste JSON / approve scopes in the OpenClaw dashboard
+### Google OAuth: the consent screen + approval require user clicks
+As of 1.5.0, the wizard has a dedicated "Connect Google" panel that
+accepts a pasted client_secret.json, saves it to
+`/home/openclaw/.gog/client_secret.json`, runs `gog auth credentials`
+server-side, and then directs the user to the OpenClaw dashboard's
+gog skill for the final OAuth approval step. The Google-Console-side
+bits (configure consent screen, create OAuth client, download JSON)
+still need user clicks — Google's API does not allow programmatic
+consent-screen configuration for external user types.
 
-A future iteration could add a "Paste client_secret.json" textarea to
-the wizard and run `gog auth credentials` server-side, surfacing the
-OAuth URL for the user to click. That'd get it to ~2 clicks but can't
-ever be 0.
+Possible next step: implement a server-side OAuth flow inside our
+setup wizard with a custom redirect URI back to our public HTTPS
+endpoint, so the user never has to use OpenClaw's dashboard for gog
+auth. Significant complexity — defer until usage justifies.
 
 ### Caddy / Let's Encrypt failure mode is rough
 If port 80 is blocked, sslip.io is down, or Let's Encrypt rate-limits
@@ -370,7 +371,8 @@ Recent versions:
 | 1.2.0 | gog CLI install + Workspace APIs + skill pre-enable + OAuth deep-links |
 | 1.2.1 | (now removed) `allowInsecureAuth` attempt |
 | 1.3.0 | Pairing approval wizard step |
-| 1.4.0 | **Caddy + sslip.io HTTPS for the dashboard** ← current |
+| 1.4.0 | Caddy + sslip.io HTTPS for the dashboard |
+| 1.5.0 | **Loading states everywhere; Telegram bot deep link; cert-readiness gate; Google OAuth wizard panel; gcloud zone-retry stderr suppression** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
