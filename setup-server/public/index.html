@@ -95,7 +95,18 @@
 
         <div id="pairing-waiting" class="pairing-state">
           <div class="spinner spinner-small"></div>
-          <p class="hint">Waiting for your <code>/start</code> message to arrive…</p>
+          <p class="hint" id="pairing-wait-msg">Waiting for your <code>/start</code> message to arrive…</p>
+        </div>
+
+        <div id="pairing-timeout" class="alert hidden">
+          <strong>Still nothing after a few minutes?</strong>
+          <ol>
+            <li>Make sure you sent <code>/start</code> to the right bot (the one you just created).</li>
+            <li>The bot's username is the one ending in <code>bot</code> — search Telegram for it.</li>
+            <li>If you mistyped your bot token earlier, <a href="#" onclick="restartTelegram(event)">start over</a>.</li>
+            <li>Or check what the gateway is doing — <a href="#" onclick="showDiagnostics(event)">show diagnostics</a>.</li>
+          </ol>
+          <button class="btn btn-secondary" onclick="retryPairingPoll()">Try again</button>
         </div>
 
         <div id="pairing-pending" class="pairing-state hidden">
@@ -144,14 +155,23 @@
         <!-- Dashboard button: gated on /api/dashboard-ready -->
         <div id="dashboard-not-ready" class="dashboard-not-ready">
           <div class="spinner spinner-small"></div>
-          <p class="hint">
+          <p class="hint" id="dashboard-wait-msg">
             Finalising secure connection for the dashboard…<br/>
-            <span class="dim">(Let's Encrypt cert provisioning, usually ~30s)</span>
+            <span class="dim">(Let's Encrypt is issuing your TLS certificate, usually ~30s)</span>
           </p>
         </div>
         <a id="dashboard-link" href="#" target="_blank" class="btn btn-primary btn-large hidden">
           Open OpenClaw Dashboard →
         </a>
+        <div id="dashboard-timeout" class="alert hidden">
+          <strong>The secure dashboard is taking longer than usual.</strong>
+          <p>You can either wait, retry, or open the dashboard over plain HTTP
+            (your browser will show a "device identity" warning — that's
+            expected; the dashboard needs a few more clicks to work over HTTP).</p>
+          <button class="btn btn-secondary" onclick="retryDashboardPoll()">Try HTTPS again</button>
+          <a id="dashboard-http-link" href="#" target="_blank" class="btn btn-link">Open over HTTP anyway →</a>
+          <a href="#" onclick="showDiagnostics(event)" class="btn btn-link">Show diagnostics</a>
+        </div>
 
         <div class="next-steps">
           <h3>Optional next steps</h3>
@@ -287,6 +307,11 @@
         <details class="diag-details">
           <summary>Setup wizard log</summary>
           <pre id="diag-log-setup">—</pre>
+        </details>
+
+        <details class="diag-details">
+          <summary>Caddy (HTTPS proxy) log</summary>
+          <pre id="diag-log-caddy">—</pre>
         </details>
 
         <details class="diag-details">

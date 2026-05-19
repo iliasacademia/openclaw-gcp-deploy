@@ -81,6 +81,7 @@ PORT=18099
 PORT="$PORT" VM_IP="1.2.3.4" PROJECT_ID="test-proj" REGION="us-central1" \
 SETUP_TOKEN="testtoken1234567890" GATEWAY_TOKEN="gwtoken1234567890" \
 OPENCLAW_CONFIG="$CONFIG" STARTUP_LOG="$CONFIG.startup" \
+SKIP_TELEGRAM_VERIFY=1 \
 node setup-server/server.js >/dev/null 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null; rm -f $CONFIG $CONFIG.startup /tmp/oc-test-out' EXIT

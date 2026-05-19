@@ -204,7 +204,12 @@ done
 
 VM_IP=$(gcloud compute instances describe "$VM_NAME" \
   --project="$PROJECT_ID" --zone="$ZONE" \
-  --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
+  --format="value(networkInterfaces[0].accessConfigs[0].natIP)" 2>/dev/null || true)
+# Validate we actually got an IPv4 — if `describe` failed or returned something
+# weird, the URL we print later would be broken and the user would be stuck.
+if ! echo "$VM_IP" | grep -qE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$'; then
+  die "Could not read the VM's external IP (got: '${VM_IP}'). The VM was created in ${ZONE} but the deploy script can't continue without its IP. Try:\n  gcloud compute instances describe ${VM_NAME} --project=${PROJECT_ID} --zone=${ZONE}"
+fi
 success "VM created in ${ZONE} — IP: ${BOLD}${VM_IP}${NC}"
 
 # ── Firewall ─────────────────────────────────────────────────────────────────
@@ -226,17 +231,36 @@ success "Port 443   → OpenClaw dashboard (HTTPS via sslip.io)"
 success "Port 8080  → Setup wizard"
 success "Port 18789 → Gateway (proxied by Caddy)"
 
+# ── Print URL UPFRONT so the user can copy it even if Cloud Shell dies ──────
+# We used to wait for the polling loop to complete before printing the URL.
+# Cloud Shell sessions can drop (idle timeout, network blip, accidental tab
+# close) during the 5-7 minute wait — at which point the user had NO way to
+# recover the URL without SSHing into the VM. Print it NOW.
+SETUP_LINK="http://${VM_IP}:8080?token=${SETUP_TOKEN}"
+
+echo ""
+echo -e "${BLUE}${BOLD}┌─────────────────────────────────────────────────────────────┐${NC}"
+echo -e "${BLUE}${BOLD}│  📋  Your setup URL (copy this NOW — save it somewhere):    │${NC}"
+echo -e "${BLUE}${BOLD}└─────────────────────────────────────────────────────────────┘${NC}"
+echo -e "      ${GREEN}${BOLD}${SETUP_LINK}${NC}"
+echo ""
+echo -e "  ${DIM}Project : ${PROJECT_NAME} (${PROJECT_ID})"
+echo -e "  VM      : ${VM_NAME}  /  ${ZONE}"
+echo -e "  VM IP   : ${VM_IP}${NC}"
+echo ""
+
 # ── Wait for setup wizard ────────────────────────────────────────────────────
-header "Waiting for VM to provision OpenClaw"
-log "Installing Node 24 + OpenClaw + setup wizard on the VM..."
-log "${DIM}Typical install time: 4-6 minutes${NC}"
+header "Waiting for OpenClaw to finish installing on the VM"
+log "Installing Node 24 + OpenClaw + setup wizard + Caddy (TLS cert)..."
+log "${DIM}Typical install time: 4-6 minutes. If you have the URL above you can${NC}"
+log "${DIM}leave this Cloud Shell tab — the VM will keep installing on its own.${NC}"
 
 SETUP_HEALTH="http://${VM_IP}:8080/health"
 MAX_ATTEMPTS=120   # 120 × 5s = 10 minutes
 READY=false
 
 for i in $(seq 1 $MAX_ATTEMPTS); do
-  printf "\r  ${DIM}Attempt %d/%d — polling %s${NC}" "$i" "$MAX_ATTEMPTS" "$SETUP_HEALTH"
+  printf "\r  ${DIM}Attempt %d/%d — checking ${SETUP_HEALTH}${NC}" "$i" "$MAX_ATTEMPTS"
   if curl -sf --max-time 5 "$SETUP_HEALTH" >/dev/null 2>&1; then
     READY=true
     break
@@ -245,30 +269,22 @@ for i in $(seq 1 $MAX_ATTEMPTS); do
 done
 echo ""
 
-# ── Done ─────────────────────────────────────────────────────────────────────
-SETUP_LINK="http://${VM_IP}:8080?token=${SETUP_TOKEN}"
-
+# ── Final status ─────────────────────────────────────────────────────────────
 echo ""
-echo -e "${GREEN}${BOLD}┌─────────────────────────────────────────────────┐${NC}"
-echo -e "${GREEN}${BOLD}│         ✅  OpenClaw deployed!                  │${NC}"
-echo -e "${GREEN}${BOLD}└─────────────────────────────────────────────────┘${NC}"
-echo ""
-
 if [ "$READY" = true ]; then
-  echo -e "  👉  Open the setup wizard:"
+  echo -e "${GREEN}${BOLD}┌─────────────────────────────────────────────────┐${NC}"
+  echo -e "${GREEN}${BOLD}│      ✅  OpenClaw is ready!                     │${NC}"
+  echo -e "${GREEN}${BOLD}└─────────────────────────────────────────────────┘${NC}"
+  echo ""
+  echo -e "  👉  Open this URL in your browser (not Incognito):"
   echo -e "      ${BLUE}${BOLD}${SETUP_LINK}${NC}"
 else
-  warn "Setup wizard did not respond within 10 minutes."
-  echo -e "  The VM may still be installing. Try the URL in 1-2 minutes:"
+  warn "Setup wizard didn't respond within 10 minutes."
+  echo -e "  This usually means the VM is still finishing — try the URL anyway:"
   echo -e "      ${BLUE}${BOLD}${SETUP_LINK}${NC}"
   echo ""
-  echo -e "  ${DIM}If it still fails, SSH in for logs:"
+  echo -e "  ${DIM}If the page never loads, SSH in for logs:"
   echo -e "    gcloud compute ssh ${VM_NAME} --project=${PROJECT_ID} --zone=${ZONE}"
   echo -e "    sudo tail -100 /var/log/openclaw-startup.log${NC}"
 fi
-
-echo ""
-echo -e "  ${DIM}Project : ${PROJECT_NAME} (${PROJECT_ID})"
-echo -e "  VM      : ${VM_NAME}  /  ${ZONE}"
-echo -e "  VM IP   : ${VM_IP}${NC}"
 echo ""

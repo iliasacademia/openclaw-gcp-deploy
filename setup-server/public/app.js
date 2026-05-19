@@ -8,9 +8,19 @@ const LS_BOT_USERNAME = 'openclaw.botUsername';
 
 let previousScreenId = null;
 let pairingPollTimer = null;
+let pairingPollCount = 0;
 let readyPollTimer   = null;
+let readyPollCount   = 0;
 let currentPairingCode = null;
 let cachedProjectId    = null;
+let cachedHttpDashboardUrl = null;
+
+// Timeouts: after this many polls (each ~3s), show a fallback UI instead of
+// spinning forever. 60 × 3s = 3 min for pairing; 100 × 3s = 5 min for the
+// TLS cert (Let's Encrypt can sometimes take a couple of minutes if it
+// retries internally).
+const PAIRING_POLL_TIMEOUT_TICKS = 60;
+const READY_POLL_TIMEOUT_TICKS   = 100;
 
 // ── Screens ──────────────────────────────────────────────────────────────────
 function showScreen(id) {
@@ -61,8 +71,18 @@ async function init() {
       return;
     }
 
-    if (data.openclawRunning) setBadge('Running', 'running');
-    else                      setBadge('Starting…', 'starting');
+    // Distinguish between "still booting" and "actually broken". A failed
+    // service in a restart loop should NOT look like "starting" to the user.
+    const gwState = (data.gatewayActiveState || '').trim();
+    if (data.openclawRunning) {
+      setBadge('Running', 'running');
+    } else if (gwState === 'failed' || gwState === 'inactive') {
+      setBadge('Gateway failed', 'error');
+    } else if (gwState === 'activating') {
+      setBadge('Starting…', 'starting');
+    } else {
+      setBadge('Starting…', 'starting');
+    }
 
     cachedProjectId = data.projectId;
     setDashboardLink(data.dashboardUrl);
@@ -164,17 +184,45 @@ function enterPairingScreen() {
   setBadge('Running', 'running');
   document.getElementById('pairing-waiting').classList.remove('hidden');
   document.getElementById('pairing-pending').classList.add('hidden');
+  document.getElementById('pairing-timeout').classList.add('hidden');
   currentPairingCode = null;
+  pairingPollCount   = 0;
   populateBotLink();
   pollForPairings();
 }
 
-function populateBotLink() {
-  // We saved the bot's username when /api/telegram returned it. If present,
-  // build a tg://resolve link (works on desktop and mobile Telegram clients)
-  // so the user can one-click to their bot with /start pre-triggered.
+function retryPairingPoll() {
+  pairingPollCount = 0;
+  document.getElementById('pairing-timeout').classList.add('hidden');
+  document.getElementById('pairing-waiting').classList.remove('hidden');
+  pollForPairings();
+}
+
+function restartTelegram(ev) {
+  if (ev) ev.preventDefault();
+  leavePairingScreen();
+  showScreen('screen-telegram');
+  const inp = document.getElementById('telegram-token');
+  if (inp) inp.value = '';
+}
+
+async function populateBotLink() {
+  // Prefer localStorage (instant, no network) — this is set when the user
+  // submits their token in this browser. If missing (different browser, etc.),
+  // fall back to /api/status which reads from a server-side cache.
   let username = null;
   try { username = localStorage.getItem(LS_BOT_USERNAME); } catch {}
+
+  if (!username) {
+    try {
+      const res  = await api('/api/status');
+      const data = await res.json();
+      if (data.botUsername) {
+        username = data.botUsername;
+        try { localStorage.setItem(LS_BOT_USERNAME, username); } catch {}
+      }
+    } catch {}
+  }
 
   const btnEl  = document.getElementById('bot-link');
   const fbEl   = document.getElementById('bot-link-fallback');
@@ -196,6 +244,7 @@ function leavePairingScreen() {
 }
 
 async function pollForPairings() {
+  pairingPollCount++;
   try {
     const res  = await api('/api/pairings');
     const data = await res.json();
@@ -216,6 +265,14 @@ async function pollForPairings() {
     }
   } catch (_) {
     // Network blips happen during boot — keep polling.
+  }
+
+  if (pairingPollCount >= PAIRING_POLL_TIMEOUT_TICKS) {
+    // Bail out and show the troubleshooting card. The user can retry,
+    // start over, or check diagnostics.
+    document.getElementById('pairing-waiting').classList.add('hidden');
+    document.getElementById('pairing-timeout').classList.remove('hidden');
+    return;
   }
   pairingPollTimer = setTimeout(pollForPairings, 3000);
 }
@@ -260,10 +317,10 @@ function skipPairing(ev) {
 // ── Done screen with dashboard-readiness gate ────────────────────────────────
 function enterDoneScreen() {
   showScreen('screen-done');
-  // Initial state: hide the dashboard button, show "Finalising…" spinner.
-  // Then poll /api/dashboard-ready until it returns ready:true.
   document.getElementById('dashboard-link').classList.add('hidden');
   document.getElementById('dashboard-not-ready').classList.remove('hidden');
+  document.getElementById('dashboard-timeout').classList.add('hidden');
+  readyPollCount = 0;
   pollDashboardReady();
 }
 
@@ -271,19 +328,46 @@ function leaveDoneScreen() {
   if (readyPollTimer) { clearTimeout(readyPollTimer); readyPollTimer = null; }
 }
 
+function retryDashboardPoll() {
+  readyPollCount = 0;
+  document.getElementById('dashboard-timeout').classList.add('hidden');
+  document.getElementById('dashboard-not-ready').classList.remove('hidden');
+  pollDashboardReady();
+}
+
 async function pollDashboardReady() {
+  readyPollCount++;
   try {
     const res = await api('/api/dashboard-ready');
     const d   = await res.json();
     if (d.ready) {
       document.getElementById('dashboard-not-ready').classList.add('hidden');
+      document.getElementById('dashboard-timeout').classList.add('hidden');
       const link = document.getElementById('dashboard-link');
       if (d.dashboardUrl) link.href = d.dashboardUrl;
       link.classList.remove('hidden');
       return; // stop polling
     }
+    if (d.httpDashboardUrl) cachedHttpDashboardUrl = d.httpDashboardUrl;
   } catch (_) {
     // Keep polling.
+  }
+
+  if (readyPollCount >= READY_POLL_TIMEOUT_TICKS) {
+    // Surface the HTTP fallback so the user isn't blocked.
+    document.getElementById('dashboard-not-ready').classList.add('hidden');
+    const httpLink = document.getElementById('dashboard-http-link');
+    if (httpLink && cachedHttpDashboardUrl) httpLink.href = cachedHttpDashboardUrl;
+    document.getElementById('dashboard-timeout').classList.remove('hidden');
+    return;
+  }
+  // Update the wait message periodically so the user can tell it's making
+  // progress, not frozen.
+  const waitMsg = document.getElementById('dashboard-wait-msg');
+  if (waitMsg && readyPollCount === 10) {
+    waitMsg.innerHTML = 'Still waiting on Let\'s Encrypt — sometimes this takes a minute or two.<br/><span class="dim">(You can chat with your bot on Telegram right now while this finishes.)</span>';
+  } else if (waitMsg && readyPollCount === 30) {
+    waitMsg.innerHTML = 'Letting Let\'s Encrypt retry — almost there…<br/><span class="dim">(Your bot is fully working on Telegram independent of the dashboard.)</span>';
   }
   readyPollTimer = setTimeout(pollDashboardReady, 3000);
 }
@@ -351,12 +435,6 @@ async function saveGoogleCredentials() {
     // Hide the input form so it's clear that step is done.
     const stepsEl = document.querySelector('#screen-google .g-steps');
     if (stepsEl) stepsEl.style.opacity = '0.4';
-
-    if (data.warning) {
-      err.textContent = data.warning;
-      err.className   = 'field-warning';
-      err.classList.remove('hidden');
-    }
 
   } catch (e) {
     document.getElementById('g-saving').classList.add('hidden');
@@ -431,6 +509,7 @@ async function loadDiagnostics() {
     setText('diag-log-gateway', d.logs?.gateway || '(no logs yet)');
     setText('diag-log-startup', d.logs?.startup || '(no startup log)');
     setText('diag-log-setup',   d.logs?.setup   || '(no setup-wizard log)');
+    setText('diag-log-caddy',   d.logs?.caddy   || '(no caddy log)');
     setText('diag-config',      d.config ? JSON.stringify(d.config, null, 2) : '(no config)');
 
   } catch (err) {

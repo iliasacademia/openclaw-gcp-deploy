@@ -129,23 +129,56 @@ function validateTelegramToken(token) {
     && /^\d{6,15}:[A-Za-z0-9_-]{20,}$/.test(token.trim());
 }
 
-// Ask Telegram's getMe for the bot's username so we can build a tg:// deep
-// link the user can one-click to open their bot. Best-effort — if Telegram
-// is unreachable or the token is wrong (we already format-validated it but
-// it could still be revoked), we return null and the UI falls back to text
-// instructions.
-async function fetchBotUsername(token) {
+// Call Telegram's getMe to (a) validate the bot token is actually live, and
+// (b) get the bot's username so the wizard can show a one-click tg:// deep
+// link. Returns:
+//   { ok: true, username }                — token works, we got a username
+//   { ok: false, reason, networkFailure } — token doesn't work, or we
+//                                           couldn't reach Telegram
+// Callers should treat networkFailure as soft (don't reject the token —
+// Telegram might just be flaky right now) but reason='unauthorized' as a
+// hard fail.
+async function fetchBotInfo(token) {
+  // Tests run against fake tokens; skip the live Telegram call when asked.
+  if (process.env.SKIP_TELEGRAM_VERIFY === '1') {
+    return { ok: true, username: 'testbot', firstName: 'Test Bot' };
+  }
   try {
     const r = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
       signal: AbortSignal.timeout(5000),
     });
     const d = await r.json();
-    if (d.ok && d.result?.username) return d.result.username;
-    return null;
+    if (d.ok && d.result?.username) {
+      return { ok: true, username: d.result.username, firstName: d.result.first_name };
+    }
+    // Telegram returned a structured "not ok" — e.g., revoked token. This is
+    // a real config problem; the bot will never reply. Surface it.
+    return {
+      ok: false,
+      reason: 'unauthorized',
+      detail: d.description || 'Telegram rejected this bot token',
+    };
   } catch (err) {
-    logEvent('warn', 'telegram_getme_failed', { err: err.message });
-    return null;
+    logEvent('warn', 'telegram_getme_network_failed', { err: err.message });
+    return { ok: false, reason: 'network', networkFailure: true, detail: err.message };
   }
+}
+
+// Where we cache the bot username so reloads / different browsers still
+// get the deep link. Tiny JSON file the wizard reads via /api/status.
+const BOT_INFO_CACHE = '/home/openclaw/.openclaw/.wizard-bot-info.json';
+
+function saveBotInfo(info) {
+  try {
+    fs.writeFileSync(BOT_INFO_CACHE, JSON.stringify(info), { mode: 0o600 });
+  } catch (err) {
+    logEvent('warn', 'bot_info_cache_write_failed', { err: err.message });
+  }
+}
+
+function readBotInfo() {
+  try { return JSON.parse(fs.readFileSync(BOT_INFO_CACHE, 'utf8')); }
+  catch { return null; }
 }
 
 // Ask Caddy whether the HTTPS dashboard URL is responding. Returns true once
@@ -181,8 +214,21 @@ function pairingList() {
     8000
   );
   if (!r.ok) return { ok: false, err: r.err };
-  try { return { ok: true, list: JSON.parse(r.out) }; }
-  catch (e) { return { ok: false, err: 'parse: ' + e.message, raw: r.out }; }
+  try {
+    const list = JSON.parse(r.out);
+    // Sanity check: openclaw should return an array or an object with
+    // .items/.pending. If we get something we don't recognise, log it so a
+    // future maintainer knows openclaw's output shape changed.
+    if (!Array.isArray(list)
+        && !Array.isArray(list?.items)
+        && !Array.isArray(list?.pending)) {
+      logEvent('warn', 'pairing_list_unrecognized_shape', { sample: r.out.slice(0, 400) });
+    }
+    return { ok: true, list };
+  } catch (e) {
+    logEvent('warn', 'pairing_list_parse_failed', { err: e.message, sample: r.out.slice(0, 400) });
+    return { ok: false, err: 'parse: ' + e.message, raw: r.out };
+  }
 }
 
 function pairingApprove(code) {
@@ -215,6 +261,8 @@ app.get('/api/status', requireToken, (_req, res) => {
   );
   const gw = gatewayServiceStatus();
 
+  const botInfo = readBotInfo();
+
   res.json({
     telegramConfigured,
     openclawRunning: gw.active,
@@ -225,6 +273,7 @@ app.get('/api/status', requireToken, (_req, res) => {
     vmIp: VM_IP,
     startupFailure: startupFailed(),
     configError,
+    botUsername: botInfo?.username || null,
   });
 });
 
@@ -255,6 +304,7 @@ app.get('/api/diagnostics', requireToken, (_req, res) => {
       startup:    tailFile(STARTUP_LOG, 120),
       gateway:    journalTail(SERVICE_NAME, 80),
       setup:      journalTail('openclaw-setup', 40),
+      caddy:      journalTail('caddy', 40),
     },
   });
 });
@@ -295,7 +345,13 @@ app.post('/api/pairings/approve', requireToken, (req, res) => {
 // linking the user out — prevents the "browser cert error" UX.
 app.get('/api/dashboard-ready', requireToken, async (_req, res) => {
   const ready = await checkDashboardReady();
-  res.json({ ready, dashboardUrl: DASHBOARD_URL });
+  // Also expose an http://VM_IP fallback so the wizard can offer a "open
+  // anyway" link when the cert is taking too long. The HTTP fallback hits
+  // the dashboard's secure-context guard, but it's better than a blank page.
+  const httpDashboardUrl = GATEWAY_TOKEN
+    ? `http://${VM_IP}:18789/?token=${encodeURIComponent(GATEWAY_TOKEN)}`
+    : `http://${VM_IP}:18789`;
+  res.json({ ready, dashboardUrl: DASHBOARD_URL, httpDashboardUrl });
 });
 
 // Save Google OAuth client_secret.json so gog can use it.
@@ -330,17 +386,24 @@ app.post('/api/gog/credentials', requireToken, (req, res) => {
     return res.status(500).json({ error: 'Could not save credentials: ' + err.message });
   }
 
-  // Tell gog about the credentials. If gog isn't installed (some
-  // deploys may skip it), surface a clear message.
+  // Check that gog is actually installed before pretending we succeeded.
+  // The startup script's gog install is best-effort (logs WARN on failure
+  // to keep the rest of the deploy alive). If gog isn't on the PATH, we
+  // can't "configure credentials" — be honest about it.
+  const which = safeExec('command -v gog', 2000);
+  if (!which.ok || !which.out) {
+    logEvent('error', 'gog_binary_missing');
+    return res.status(500).json({
+      error: 'The gog CLI is not installed on this VM (the startup script\'s install probably failed). Try redeploying, or SSH in and run `curl -sfL ... | tar` manually. Your client_secret.json has been saved but is unusable until gog is installed.',
+    });
+  }
+
+  // Tell gog about the credentials.
   const r = safeExec(`env HOME=/home/openclaw gog auth credentials ${GOG_CREDS_PATH}`, 10000);
   if (!r.ok) {
-    logEvent('warn', 'gog_auth_credentials_failed', { err: r.err });
-    // Still consider the file save a success — the user can finish via the
-    // dashboard or SSH if gog cli has issues.
-    return res.json({
-      success: true,
-      gogConfigured: false,
-      warning: 'Saved credentials to ' + GOG_CREDS_PATH + ', but `gog auth credentials` reported: ' + (r.err || 'unknown error'),
+    logEvent('error', 'gog_auth_credentials_failed', { err: r.err });
+    return res.status(500).json({
+      error: '`gog auth credentials` rejected the file. This usually means the JSON isn\'t an OAuth Desktop client — verify in Google Cloud Console that you picked Application type "Desktop app". Raw error: ' + (r.err || r.out || 'unknown'),
     });
   }
   logEvent('info', 'gog_credentials_saved', { clientId });
@@ -376,12 +439,25 @@ app.post('/api/telegram', requireToken, async (req, res) => {
     return res.status(500).json({ error: 'Could not write config: ' + err.message });
   }
 
-  logEvent('info', 'telegram_configured');
+  // Verify the token actually works against Telegram BEFORE we lock it
+  // into the config. A revoked/wrong-but-correctly-formatted token would
+  // otherwise sail through, the gateway would happily accept it, and the
+  // user would sit on the pairing screen forever wondering why their bot
+  // never responds.
+  const info = await fetchBotInfo(token);
+  if (!info.ok && info.reason === 'unauthorized') {
+    return res.status(400).json({
+      error: 'Telegram rejected this bot token. Please check that you copied the WHOLE token from BotFather and try again. (' + (info.detail || 'unauthorized') + ')',
+    });
+  }
+  // Network failures are soft — proceed; Telegram could be transiently
+  // unreachable and the token may still be valid.
 
-  // Look up the bot's username so the wizard can show a one-click
-  // tg://resolve link in the pairing step. Don't fail the request if this
-  // call fails — the wizard falls back to text instructions.
-  const botUsername = await fetchBotUsername(token);
+  logEvent('info', 'telegram_configured', { botUsername: info.username || null });
+
+  if (info.ok) {
+    saveBotInfo({ username: info.username, firstName: info.firstName });
+  }
 
   // Restart so the bot connects immediately. Hot-reload also works for some
   // changes, but channel reconnects are more reliable with a fresh process.
@@ -392,7 +468,8 @@ app.post('/api/telegram', requireToken, async (req, res) => {
     restarted,
     dashboardUrl: DASHBOARD_URL,
     projectId: PROJECT_ID,
-    botUsername,
+    botUsername: info.username || null,
+    telegramOffline: !!info.networkFailure,
   });
 });
 
