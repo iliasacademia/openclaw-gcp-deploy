@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.0` · **Last reviewed:** 2026-05-19
+**Current version:** setup-server `1.6.1` · **Last reviewed:** 2026-05-19
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -373,7 +373,8 @@ Recent versions:
 | 1.3.0 | Pairing approval wizard step |
 | 1.4.0 | Caddy + sslip.io HTTPS for the dashboard |
 | 1.5.0 | Loading states everywhere; Telegram bot deep link; cert-readiness gate; Google OAuth wizard panel; gcloud zone-retry stderr suppression |
-| 1.6.0 | **Robustness pass: URL printed early; pairing/cert poll timeouts with fallback; hard-fail bad Telegram tokens; correct gog success semantics; Caddy logs in diagnostics; gateway 'Failed' badge state** ← current |
+| 1.6.0 | Robustness pass: URL printed early; pairing/cert poll timeouts with fallback; hard-fail bad Telegram tokens; correct gog success semantics; Caddy logs in diagnostics; gateway 'Failed' badge state |
+| 1.6.1 | **URL re-printed at end of deploy with same prominence as the upfront copy; pairing wait shows progressive hints (30s/60s/120s/180s) instead of a static "Waiting…" message** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
