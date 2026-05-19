@@ -270,21 +270,29 @@ done
 echo ""
 
 # ── Final status ─────────────────────────────────────────────────────────────
+# We re-print the URL with the same prominence as the upfront copy so the
+# user doesn't need to scroll back through 7 minutes of polling output.
+echo ""
 echo ""
 if [ "$READY" = true ]; then
-  echo -e "${GREEN}${BOLD}┌─────────────────────────────────────────────────┐${NC}"
-  echo -e "${GREEN}${BOLD}│      ✅  OpenClaw is ready!                     │${NC}"
-  echo -e "${GREEN}${BOLD}└─────────────────────────────────────────────────┘${NC}"
+  echo -e "${GREEN}${BOLD}┌─────────────────────────────────────────────────────────────┐${NC}"
+  echo -e "${GREEN}${BOLD}│  ✅  OpenClaw is ready! Open this URL to finish setup:      │${NC}"
+  echo -e "${GREEN}${BOLD}└─────────────────────────────────────────────────────────────┘${NC}"
+  echo -e "      ${GREEN}${BOLD}${SETUP_LINK}${NC}"
   echo ""
-  echo -e "  👉  Open this URL in your browser (not Incognito):"
-  echo -e "      ${BLUE}${BOLD}${SETUP_LINK}${NC}"
+  echo -e "  ${DIM}(Use a regular Chrome/Firefox/Safari window — not Incognito.)${NC}"
 else
-  warn "Setup wizard didn't respond within 10 minutes."
-  echo -e "  This usually means the VM is still finishing — try the URL anyway:"
+  echo -e "${YELLOW}${BOLD}┌─────────────────────────────────────────────────────────────┐${NC}"
+  echo -e "${YELLOW}${BOLD}│  ⏳  VM didn't respond in 10 min — try the URL anyway:      │${NC}"
+  echo -e "${YELLOW}${BOLD}└─────────────────────────────────────────────────────────────┘${NC}"
   echo -e "      ${BLUE}${BOLD}${SETUP_LINK}${NC}"
   echo ""
-  echo -e "  ${DIM}If the page never loads, SSH in for logs:"
+  echo -e "  ${DIM}The VM may still be installing. If the page never loads, SSH in:"
   echo -e "    gcloud compute ssh ${VM_NAME} --project=${PROJECT_ID} --zone=${ZONE}"
   echo -e "    sudo tail -100 /var/log/openclaw-startup.log${NC}"
 fi
+echo ""
+echo -e "  ${DIM}Project : ${PROJECT_NAME} (${PROJECT_ID})"
+echo -e "  VM      : ${VM_NAME}  /  ${ZONE}"
+echo -e "  VM IP   : ${VM_IP}${NC}"
 echo ""

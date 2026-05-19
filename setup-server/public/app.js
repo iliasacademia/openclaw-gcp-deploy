@@ -243,6 +243,41 @@ function leavePairingScreen() {
   if (pairingPollTimer) { clearTimeout(pairingPollTimer); pairingPollTimer = null; }
 }
 
+// Progressive hint messages shown while waiting for a /start to arrive.
+// Better UX than silence-then-bail-at-3-min: at each threshold the user
+// gets a more specific, more actionable suggestion. If pairing succeeds at
+// any point the screen transitions away and these never fire.
+//
+// Polls happen every 3s, so tick counts map to seconds × 3.
+//   ticks <10  (<30s) — first message, just "Waiting…"
+//   ticks <20  (<60s) — nudge: "Did you send /start? Tap the button above"
+//   ticks <40  (<120s) — checklist: right bot, right command, etc.
+//   ticks <60  (<180s) — escalate: point at diagnostics
+//   ticks ≥60 (≥180s) — full troubleshooting card replaces the spinner
+function pairingWaitMessage(ticks, botUsername) {
+  const bot = botUsername ? '@' + botUsername : 'your bot';
+  if (ticks < 10) {
+    return `Waiting for your <code>/start</code> message to arrive…`;
+  }
+  if (ticks < 20) {
+    return `Still waiting — have you sent <code>/start</code> to ${bot} yet?<br/>
+            <span class="dim">Tap the blue button above if you haven't.</span>`;
+  }
+  if (ticks < 40) {
+    return `Not seeing your message yet. Quick checklist:<br/>
+            <span class="dim">• You're messaging the right bot (${bot}, not a different one)<br/>
+            • You sent <code>/start</code> as a normal message<br/>
+            • The bot already replied to you in Telegram (if not, the token may be wrong)</span>`;
+  }
+  if (ticks < 60) {
+    return `Still nothing after 2 minutes — the gateway might be having trouble.<br/>
+            <span class="dim">Open <a href="#" onclick="showDiagnostics(event); return false;">diagnostics</a>
+            to see whether your <code>/start</code> reached the gateway.</span>`;
+  }
+  // ≥ 60: the full troubleshooting card takes over instead of this message.
+  return '';
+}
+
 async function pollForPairings() {
   pairingPollCount++;
   try {
@@ -268,12 +303,24 @@ async function pollForPairings() {
   }
 
   if (pairingPollCount >= PAIRING_POLL_TIMEOUT_TICKS) {
-    // Bail out and show the troubleshooting card. The user can retry,
-    // start over, or check diagnostics.
+    // Final fallback: full troubleshooting card with retry / start-over /
+    // diagnostics. Only kicks in after the progressive hints didn't help.
     document.getElementById('pairing-waiting').classList.add('hidden');
     document.getElementById('pairing-timeout').classList.remove('hidden');
     return;
   }
+
+  // Update the wait message progressively so the user always knows what
+  // to do next, instead of staring at a frozen spinner. Re-read the
+  // username on every poll so it picks up the value once /api/status
+  // populates it (matters for cross-browser reloads where the cache is
+  // hydrated asynchronously by populateBotLink()).
+  let username = null;
+  try { username = localStorage.getItem(LS_BOT_USERNAME); } catch {}
+  const msg = pairingWaitMessage(pairingPollCount, username);
+  const el = document.getElementById('pairing-wait-msg');
+  if (el && msg) el.innerHTML = msg;
+
   pairingPollTimer = setTimeout(pollForPairings, 3000);
 }
 
