@@ -205,14 +205,27 @@ async function checkDashboardReady() {
 // Accept a generous range to stay forward-compatible.
 const PAIRING_CODE_RE = /^[A-Z0-9]{4,32}$/;
 
+const PAIRING_LIST_CMD = `env HOME=/home/openclaw OPENCLAW_NO_RESPAWN=1 openclaw pairing list telegram --json`;
+
+// Cached output from the most recent pairing-list invocation. Surfaced in
+// /api/diagnostics so if the CLI subcommand was renamed/removed upstream the
+// raw stderr is visible without SSH.
+let lastPairingProbe = null;
+
 function pairingList() {
   // openclaw CLI talks to the gateway via WebSocket RPC, using auth from
   // ~/.openclaw/openclaw.json (which we own). Our service runs as the
   // openclaw user, so HOME is already /home/openclaw.
-  const r = safeExec(
-    `env HOME=/home/openclaw OPENCLAW_NO_RESPAWN=1 openclaw pairing list telegram --json`,
-    8000
-  );
+  // 2>&1 merges stderr into the captured output — important for diagnostics:
+  // if the CLI no longer accepts these args, the error text is visible.
+  const r = safeExec(`${PAIRING_LIST_CMD} 2>&1`, 8000);
+  lastPairingProbe = {
+    ts: new Date().toISOString(),
+    command: PAIRING_LIST_CMD,
+    ok: r.ok,
+    rawOutput: (r.out || '').slice(0, 2000),
+    error: r.err || null,
+  };
   if (!r.ok) return { ok: false, err: r.err };
   try {
     const list = JSON.parse(r.out);
@@ -229,6 +242,29 @@ function pairingList() {
     logEvent('warn', 'pairing_list_parse_failed', { err: e.message, sample: r.out.slice(0, 400) });
     return { ok: false, err: 'parse: ' + e.message, raw: r.out };
   }
+}
+
+// Three concentric reachability probes. If the dashboard doesn't load, we
+// want to know exactly where the chain breaks:
+//   loopback  — gateway is up AND bound on loopback (Caddy needs this)
+//   lan       — gateway is up AND bound on LAN (matches our config bind=lan)
+//   sslip     — Caddy is up AND has a Let's Encrypt cert AND can proxy
+// `curl -w` prints status code, TLS verify result, and total time as a
+// pipe-separated line, which the wizard renders verbatim in diagnostics.
+function connectivityProbe() {
+  const fmt = '%{http_code}|tls=%{ssl_verify_result}|t=%{time_total}s';
+  const run = (url) => {
+    const cmd = `curl -sS -o /dev/null -w ${JSON.stringify(fmt)} --max-time 4 ${JSON.stringify(url)} 2>&1`;
+    const r = safeExec(cmd, 6000);
+    return { url, ok: r.ok, output: r.out, error: r.err || null };
+  };
+  return {
+    loopback: run('http://127.0.0.1:18789/'),
+    lan:      run(`http://${VM_IP}:18789/`),
+    sslip:    SSLIP_DOMAIN
+      ? run(`https://${SSLIP_DOMAIN}/`)
+      : { url: '(SSLIP_DOMAIN not set)', ok: false, output: '', error: 'not configured' },
+  };
 }
 
 function pairingApprove(code) {
@@ -290,6 +326,15 @@ app.get('/api/diagnostics', requireToken, (_req, res) => {
     configRedacted = { error: err.message };
   }
 
+  // Run the connectivity probe and a live pairing probe so the diagnostics
+  // dump always contains the freshest "where is the chain broken" data. Both
+  // are best-effort and capped to a few seconds; failures land in the JSON.
+  const connectivity = connectivityProbe();
+  // Refresh pairing probe lazily — only if it's stale or absent.
+  if (!lastPairingProbe || Date.now() - new Date(lastPairingProbe.ts).getTime() > 10000) {
+    try { pairingList(); } catch (_) { /* probe stored in lastPairingProbe */ }
+  }
+
   res.json({
     setupServerVersion: PKG_VERSION,
     timestamp:   new Date().toISOString(),
@@ -297,14 +342,17 @@ app.get('/api/diagnostics', requireToken, (_req, res) => {
     projectId:   PROJECT_ID,
     region:      REGION,
     dashboardUrl: DASHBOARD_URL,
+    sslipDomain: SSLIP_DOMAIN || null,
     gateway:     { ...gw, serviceName: SERVICE_NAME },
     startupFailure: startupFailed(),
     config:      configRedacted,
+    connectivity,
+    pairingProbe: lastPairingProbe,
     logs: {
       startup:    tailFile(STARTUP_LOG, 120),
       gateway:    journalTail(SERVICE_NAME, 80),
       setup:      journalTail('openclaw-setup', 40),
-      caddy:      journalTail('caddy', 40),
+      caddy:      journalTail('caddy', 60),
     },
   });
 });
@@ -420,6 +468,20 @@ app.post('/api/telegram', requireToken, async (req, res) => {
     });
   }
 
+  // Verify the token actually works against Telegram BEFORE we persist it
+  // to the config. Otherwise a revoked/wrong-but-correctly-formatted token
+  // ends up on disk with telegram.enabled=true; the next page reload sees
+  // telegramConfigured=true and routes the user to a pairing screen that
+  // can never advance.
+  const info = await fetchBotInfo(token);
+  if (!info.ok && info.reason === 'unauthorized') {
+    return res.status(400).json({
+      error: 'Telegram rejected this bot token. Please check that you copied the WHOLE token from BotFather and try again. (' + (info.detail || 'unauthorized') + ')',
+    });
+  }
+  // Network failures are soft — proceed; Telegram could be transiently
+  // unreachable and the token may still be valid.
+
   let config;
   try { config = readConfig(); }
   catch (err) {
@@ -438,20 +500,6 @@ app.post('/api/telegram', requireToken, async (req, res) => {
     logEvent('error', 'config_write_failed', { err: err.message });
     return res.status(500).json({ error: 'Could not write config: ' + err.message });
   }
-
-  // Verify the token actually works against Telegram BEFORE we lock it
-  // into the config. A revoked/wrong-but-correctly-formatted token would
-  // otherwise sail through, the gateway would happily accept it, and the
-  // user would sit on the pairing screen forever wondering why their bot
-  // never responds.
-  const info = await fetchBotInfo(token);
-  if (!info.ok && info.reason === 'unauthorized') {
-    return res.status(400).json({
-      error: 'Telegram rejected this bot token. Please check that you copied the WHOLE token from BotFather and try again. (' + (info.detail || 'unauthorized') + ')',
-    });
-  }
-  // Network failures are soft — proceed; Telegram could be transiently
-  // unreachable and the token may still be valid.
 
   logEvent('info', 'telegram_configured', { botUsername: info.username || null });
 

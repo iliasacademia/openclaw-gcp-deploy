@@ -308,19 +308,37 @@ case "$ARCH" in
   *)     GOG_ARCH="" ;;
 esac
 if [ -n "$GOG_ARCH" ]; then
-  GOG_URL="https://github.com/openclaw/gogcli/releases/latest/download/gogcli_${GOG_ARCH}.tar.gz"
-  # The filename in the latest release uses the actual version; resolve via API
-  GOG_TAG=$(curl -sf https://api.github.com/repos/openclaw/gogcli/releases/latest | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
+  echo "  arch: ${ARCH} → gog asset arch: ${GOG_ARCH}"
+  # Latest-release filename uses the actual version (e.g. gogcli_1.2.3_linux_amd64.tar.gz).
+  # Resolve the tag via GitHub's API so we can construct the exact URL.
+  GOG_TAG=$(curl -sf https://api.github.com/repos/openclaw/gogcli/releases/latest \
+    | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
   if [ -n "$GOG_TAG" ]; then
     GOG_URL="https://github.com/openclaw/gogcli/releases/download/v${GOG_TAG}/gogcli_${GOG_TAG}_linux_${GOG_ARCH}.tar.gz"
-    if curl -sfL "$GOG_URL" | tar -xz -C /usr/local/bin gog 2>/dev/null; then
-      chmod +x /usr/local/bin/gog
-      echo "gog $(gog --version 2>/dev/null || echo installed)"
+    echo "  resolved release: v${GOG_TAG}"
+    echo "  url: ${GOG_URL}"
+    # Download to a tempfile first so we can log size / inspect on failure,
+    # instead of piping straight to tar where a 404 silently produces an
+    # empty tar stream.
+    rm -f /tmp/gog.tar.gz
+    if curl -fSL --max-time 60 -o /tmp/gog.tar.gz "$GOG_URL" 2>/tmp/gog.curl.err; then
+      GOG_SIZE=$(stat -c%s /tmp/gog.tar.gz 2>/dev/null || echo "?")
+      echo "  download ok (size: ${GOG_SIZE} bytes)"
+      if tar -xzf /tmp/gog.tar.gz -C /usr/local/bin gog 2>/tmp/gog.tar.err; then
+        chmod +x /usr/local/bin/gog
+        echo "gog $(gog --version 2>/dev/null || echo installed)"
+      else
+        echo "WARN: tar extract failed for ${GOG_URL}"
+        echo "WARN:   tar stderr: $(tr '\n' ' ' < /tmp/gog.tar.err)"
+        echo "WARN:   first 200 bytes of payload: $(head -c 200 /tmp/gog.tar.gz | tr -c '[:print:]' '?')"
+      fi
     else
-      echo "WARN: gog install failed (continuing — skill will be unavailable until manually installed)"
+      echo "WARN: curl download failed for ${GOG_URL}"
+      echo "WARN:   curl stderr: $(tr '\n' ' ' < /tmp/gog.curl.err)"
     fi
+    rm -f /tmp/gog.tar.gz /tmp/gog.curl.err /tmp/gog.tar.err
   else
-    echo "WARN: could not resolve gog latest release (continuing without gog)"
+    echo "WARN: could not resolve gog latest release tag from GitHub API (continuing without gog)"
   fi
 else
   echo "WARN: unsupported arch '${ARCH}' for gog (continuing without gog)"

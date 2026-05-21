@@ -553,6 +553,31 @@ async function loadDiagnostics() {
       `Wizard ver: ${d.setupServerVersion || '?'}\n` +
       `Time:       ${d.timestamp}`);
 
+    const fmtProbe = (label, p) => {
+      if (!p) return `${label}: (none)`;
+      const status = p.ok ? 'ok' : 'FAIL';
+      return `${label}\n  url:    ${p.url}\n  status: ${status}\n  curl:   ${p.output || '(no output)'}` +
+             (p.error ? `\n  error:  ${p.error}` : '');
+    };
+    setText('diag-connectivity',
+      d.connectivity
+        ? [
+            fmtProbe('Loopback (Caddy → gateway, 127.0.0.1:18789)', d.connectivity.loopback),
+            fmtProbe('LAN (external IP → gateway, :18789)',          d.connectivity.lan),
+            fmtProbe('HTTPS via sslip.io (browser path)',             d.connectivity.sslip),
+          ].join('\n\n')
+        : '(no connectivity probe in response)');
+
+    setText('diag-pairing',
+      d.pairingProbe
+        ? `command: ${d.pairingProbe.command}\n` +
+          `time:    ${d.pairingProbe.ts}\n` +
+          `ok:      ${d.pairingProbe.ok}\n` +
+          (d.pairingProbe.error ? `error:   ${d.pairingProbe.error}\n` : '') +
+          `\n--- raw stdout+stderr (truncated to 2KB) ---\n` +
+          (d.pairingProbe.rawOutput || '(empty)')
+        : '(no pairing probe yet — try sending /start to your bot then refresh)');
+
     setText('diag-log-gateway', d.logs?.gateway || '(no logs yet)');
     setText('diag-log-startup', d.logs?.startup || '(no startup log)');
     setText('diag-log-setup',   d.logs?.setup   || '(no setup-wizard log)');

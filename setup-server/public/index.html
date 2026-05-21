@@ -29,7 +29,7 @@
       <div id="screen-telegram" class="screen">
 
         <div class="step-header">
-          <div class="step-pill">Step 1 of 1</div>
+          <div class="step-pill">Step 1 of 2</div>
           <h1>Connect Telegram</h1>
           <p class="subtitle">
             OpenClaw uses a Telegram bot to receive your messages and reply
@@ -293,6 +293,16 @@
             <div id="diag-vm" class="diag-content">—</div>
           </div>
         </div>
+
+        <details class="diag-details" open>
+          <summary>Connectivity probe (gateway loopback / LAN / sslip HTTPS)</summary>
+          <pre id="diag-connectivity">—</pre>
+        </details>
+
+        <details class="diag-details">
+          <summary>Pairing CLI probe (most recent <code>openclaw pairing list</code>)</summary>
+          <pre id="diag-pairing">—</pre>
+        </details>
 
         <details class="diag-details" open>
           <summary>Gateway logs</summary>

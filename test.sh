@@ -131,13 +131,19 @@ check_code "/api/telegram accepts well-formed token" 200 \
   -d '{"token":"123456789:ABCdefGHIjklMNOpqrSTUvwxYZabcdef0123"}' \
   "http://localhost:$PORT/api/telegram?token=testtoken1234567890"
 
-DIAG=$(curl -s "http://localhost:$PORT/api/diagnostics?token=testtoken1234567890")
+# Write the response to a tempfile so grep can read it safely. We used to
+# interpolate $DIAG into a bash -c "echo '...'" — fragile, because any '(',
+# "'", or escape inside the JSON breaks the shell quoting.
+DIAG_FILE="$(mktemp)"
+curl -s "http://localhost:$PORT/api/diagnostics?token=testtoken1234567890" > "$DIAG_FILE"
 
 check "/api/diagnostics redacts gateway token" \
-  bash -c "echo '$DIAG' | grep -q '\"token\":\"\\*\\*\\*\"'"
+  grep -q '"token":"\*\*\*"' "$DIAG_FILE"
 
 check "/api/diagnostics surfaces setupServerVersion" \
-  bash -c "echo '$DIAG' | grep -q '\"setupServerVersion\":\"'"
+  grep -q '"setupServerVersion":"' "$DIAG_FILE"
+
+rm -f "$DIAG_FILE"
 
 check_code "/api/dashboard-ready responds" 200 \
   "http://localhost:$PORT/api/dashboard-ready?token=testtoken1234567890"

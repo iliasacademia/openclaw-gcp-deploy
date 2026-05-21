@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.1` · **Last reviewed:** 2026-05-19
+**Current version:** setup-server `1.6.2` · **Last reviewed:** 2026-05-21
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -374,7 +374,8 @@ Recent versions:
 | 1.4.0 | Caddy + sslip.io HTTPS for the dashboard |
 | 1.5.0 | Loading states everywhere; Telegram bot deep link; cert-readiness gate; Google OAuth wizard panel; gcloud zone-retry stderr suppression |
 | 1.6.0 | Robustness pass: URL printed early; pairing/cert poll timeouts with fallback; hard-fail bad Telegram tokens; correct gog success semantics; Caddy logs in diagnostics; gateway 'Failed' badge state |
-| 1.6.1 | **URL re-printed at end of deploy with same prominence as the upfront copy; pairing wait shows progressive hints (30s/60s/120s/180s) instead of a static "Waiting…" message** ← current |
+| 1.6.1 | URL re-printed at end of deploy with same prominence as the upfront copy; pairing wait shows progressive hints (30s/60s/120s/180s) instead of a static "Waiting…" message |
+| 1.6.2 | **Fix step-counter copy (Step 1 of 2, not "1 of 1"); validate Telegram token before persisting to config (prevents stuck pairing screen after a bad-token submit); diagnostics now surface a connectivity probe (loopback / LAN / sslip HTTPS) and the raw `openclaw pairing list` stdout+stderr; verbose gog install logging with download size + curl/tar stderr** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
