@@ -16,6 +16,81 @@ warn()    { echo -e "${YELLOW}⚠${NC}  $*"; }
 die()     { echo -e "\n${RED}✗ ERROR:${NC} $*\n"; exit 1; }
 header()  { echo -e "\n${BOLD}$*${NC}"; echo -e "${DIM}$(printf '─%.0s' {1..50})${NC}"; }
 
+# ── Live spinner for long-running operations ─────────────────────────────────
+# gcloud commands like `services enable` go silent for 1-2 minutes, which
+# makes Cloud Shell look frozen. with_spinner runs the command in the
+# background and prints a braille spinner + elapsed seconds so the user can
+# see we're still alive. On failure, dumps the captured output indented.
+#
+#   with_spinner "Doing thing" some-cmd --arg
+#
+# Use with_spinner_capture when the caller needs to inspect the output
+# (e.g. parse stderr for specific error codes). Output path is exposed via
+# the global WITH_SPINNER_LOG; the caller must `rm -f` it when done.
+WITH_SPINNER_LOG=""
+
+with_spinner() {
+  local label="$1"; shift
+  local logf; logf=$(mktemp)
+  _spinner_run "$label" "$logf" "$@"
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "" >&2
+    sed 's/^/    /' "$logf" >&2
+  fi
+  rm -f "$logf"
+  return "$rc"
+}
+
+with_spinner_capture() {
+  local label="$1"; shift
+  WITH_SPINNER_LOG=$(mktemp)
+  _spinner_run "$label" "$WITH_SPINNER_LOG" "$@"
+  return $?
+}
+
+_spinner_run() {
+  local label="$1"; shift
+  local logf="$1"; shift
+  "$@" >"$logf" 2>&1 &
+  local pid=$!
+  local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+  local i=0
+  local start; start=$(date +%s)
+  while kill -0 "$pid" 2>/dev/null; do
+    local elapsed=$(( $(date +%s) - start ))
+    local frame="${frames[i % ${#frames[@]}]}"
+    printf "\r  ${BLUE}%s${NC} %s ${DIM}— %ds elapsed${NC}     " "$frame" "$label" "$elapsed"
+    i=$((i + 1))
+    sleep 0.2
+  done
+  local rc=0
+  wait "$pid" || rc=$?
+  local elapsed=$(( $(date +%s) - start ))
+  if [ "$rc" -eq 0 ]; then
+    printf "\r  ${GREEN}✓${NC} %s ${DIM}(%ds)${NC}                                                          \n" "$label" "$elapsed"
+  else
+    printf "\r  ${RED}✗${NC} %s ${DIM}(failed after %ds)${NC}                                                \n" "$label" "$elapsed"
+  fi
+  return "$rc"
+}
+
+# A simple visible countdown for fixed-length waits (e.g. API propagation).
+countdown() {
+  local label="$1"
+  local total="$2"
+  local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+  local i=0
+  for s in $(seq 1 "$total"); do
+    local frame="${frames[i % ${#frames[@]}]}"
+    local remaining=$(( total - s ))
+    printf "\r  ${BLUE}%s${NC} %s ${DIM}— %ds remaining${NC}     " "$frame" "$label" "$remaining"
+    i=$((i + 1))
+    sleep 1
+  done
+  printf "\r  ${GREEN}✓${NC} %s ${DIM}(%ds elapsed)${NC}                                          \n" "$label" "$total"
+}
+
 # ── Banner ───────────────────────────────────────────────────────────────────
 clear
 echo -e "${BLUE}${BOLD}"
@@ -73,11 +148,9 @@ if [ -n "$STALE" ]; then
   warn "Cleaning up project(s) from previous runs:"
   echo "$STALE" | while read -r pid; do
     [ -z "$pid" ] && continue
-    warn "  deleting ${pid}..."
-    gcloud projects delete "$pid" --quiet 2>/dev/null || true
+    with_spinner "Deleting ${pid}" gcloud projects delete "$pid" --quiet || true
   done
-  log "Waiting 15s for deletions to register..."
-  sleep 15
+  countdown "Letting deletions register" 15
 fi
 
 SUFFIX=$(printf '%04d' $((RANDOM % 10000)))
@@ -87,43 +160,48 @@ PROJECT_NAME="My First Claw Agent"
 log "Project name : ${PROJECT_NAME}"
 log "Project ID   : ${PROJECT_ID}"
 
-gcloud projects create "$PROJECT_ID" --name="$PROJECT_NAME" --quiet \
+with_spinner "Creating project ${PROJECT_ID}" \
+  gcloud projects create "$PROJECT_ID" --name="$PROJECT_NAME" --quiet \
   || die "Failed to create project — you may have hit the GCP project quota.\n\n  Fix:\n  1. Open ${BLUE}https://console.cloud.google.com/cloud-resource-manager${NC}\n  2. Permanently delete any pending-deletion 'my-first-claw-*' projects\n  3. Re-run this script."
 
-BILLING_ERR=$(gcloud billing projects link "$PROJECT_ID" \
-  --billing-account="$BILLING_ACCOUNT" --quiet 2>&1) || {
+# Link billing — we need to inspect stderr to detect the "billing quota
+# exceeded" case and give a targeted fix, so use the capture variant.
+if ! with_spinner_capture "Linking billing account" \
+    gcloud billing projects link "$PROJECT_ID" \
+      --billing-account="$BILLING_ACCOUNT" --quiet; then
+  BILLING_ERR=$(cat "$WITH_SPINNER_LOG")
+  rm -f "$WITH_SPINNER_LOG"
   if echo "$BILLING_ERR" | grep -q "billing quota exceeded"; then
     die "GCP billing quota exceeded.\n\n  Fix:\n  1. Open ${BLUE}https://console.cloud.google.com/cloud-resource-manager${NC}\n  2. Permanently delete any pending-deletion projects\n  3. Wait ~5 minutes, then re-run this script."
   fi
   die "Could not link billing.\n  ${BILLING_ERR}"
-}
-success "Project created and billing linked"
+fi
+rm -f "$WITH_SPINNER_LOG"
 
 # ── Enable APIs ──────────────────────────────────────────────────────────────
 header "Enabling GCP APIs"
-log "Enabling Compute Engine, Vertex AI, IAM..."
 
-gcloud services enable \
-  compute.googleapis.com \
-  aiplatform.googleapis.com \
-  iam.googleapis.com \
-  iamcredentials.googleapis.com \
-  cloudresourcemanager.googleapis.com \
-  gmail.googleapis.com \
-  calendar-json.googleapis.com \
-  drive.googleapis.com \
-  people.googleapis.com \
-  sheets.googleapis.com \
-  docs.googleapis.com \
-  --project="$PROJECT_ID" --quiet
+# gcloud bundles all 11 services into a single backend operation and emits
+# basically no output until it completes — often 60-120s. with_spinner gives
+# the user a visible heartbeat instead of a dead-looking terminal.
+with_spinner "Enabling 11 GCP APIs (Compute / Vertex AI / IAM / Workspace)" \
+  gcloud services enable \
+    compute.googleapis.com \
+    aiplatform.googleapis.com \
+    iam.googleapis.com \
+    iamcredentials.googleapis.com \
+    cloudresourcemanager.googleapis.com \
+    gmail.googleapis.com \
+    calendar-json.googleapis.com \
+    drive.googleapis.com \
+    people.googleapis.com \
+    sheets.googleapis.com \
+    docs.googleapis.com \
+    --project="$PROJECT_ID" --quiet \
+  || die "Failed to enable APIs — check that the project was created and billing is linked."
 
 # APIs need ~30-60s to fully propagate before dependent operations work.
-log "Waiting 60s for API propagation..."
-for i in $(seq 1 60); do
-  printf "\r  ${DIM}[%02d/60]${NC}" "$i"; sleep 1
-done
-echo ""
-success "APIs enabled"
+countdown "Waiting for API propagation" 60
 
 # ── Dedicated service account for the VM ─────────────────────────────────────
 # Using a dedicated SA avoids the default Compute Engine SA, which newer GCP
@@ -134,9 +212,10 @@ header "Creating VM service account"
 VM_SA_NAME="openclaw-vm"
 VM_SA="${VM_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-gcloud iam service-accounts create "$VM_SA_NAME" \
-  --display-name="OpenClaw VM service account" \
-  --project="$PROJECT_ID" --quiet \
+with_spinner "Creating service account ${VM_SA_NAME}" \
+  gcloud iam service-accounts create "$VM_SA_NAME" \
+    --display-name="OpenClaw VM service account" \
+    --project="$PROJECT_ID" --quiet \
   || die "Could not create service account ${VM_SA_NAME}"
 
 # SA creation can take a few seconds to be visible to IAM bindings.
@@ -165,40 +244,39 @@ ZONES=(us-central1-a us-central1-b us-central1-c us-central1-f
 log "Machine: ${MACHINE_TYPE}  OS: Debian 13  Disk: 20 GB"
 
 ZONE=""
-# Capture stderr to a file so we can parse it for genuine failures (vs
-# transient capacity errors, which we expect and want to suppress). gcloud's
-# default error output is a multi-line YAML dump per zone — overwhelming for
-# a non-technical user who'd think the script was broken.
-CREATE_ERR=$(mktemp)
-trap "rm -f $CREATE_ERR" EXIT
-
+# VM creation per zone can take 30-60s and frequently fails on the first
+# couple of zones due to capacity exhaustion. with_spinner_capture lets us
+# show progress AND inspect the error so we can distinguish "zone full"
+# (try next) from "real failure" (show details).
 for z in "${ZONES[@]}"; do
-  log "Trying zone ${z}..."
-  if gcloud compute instances create "$VM_NAME" \
-      --project="$PROJECT_ID" \
-      --zone="$z" \
-      --machine-type="$MACHINE_TYPE" \
-      --image-family="debian-13" \
-      --image-project="debian-cloud" \
-      --boot-disk-size="20GB" \
-      --boot-disk-type="pd-balanced" \
-      --tags="openclaw" \
-      --service-account="$VM_SA" \
-      --scopes="cloud-platform" \
-      --metadata="repo-url=${REPO_URL},setup-token=${SETUP_TOKEN},gateway-token=${GATEWAY_TOKEN},gog-keyring=${GOG_KEYRING_PASSWORD}" \
-      --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh" \
-      --quiet >/dev/null 2>"$CREATE_ERR"; then
+  if with_spinner_capture "Trying zone ${z}" \
+      gcloud compute instances create "$VM_NAME" \
+        --project="$PROJECT_ID" \
+        --zone="$z" \
+        --machine-type="$MACHINE_TYPE" \
+        --image-family="debian-13" \
+        --image-project="debian-cloud" \
+        --boot-disk-size="20GB" \
+        --boot-disk-type="pd-balanced" \
+        --tags="openclaw" \
+        --service-account="$VM_SA" \
+        --scopes="cloud-platform" \
+        --metadata="repo-url=${REPO_URL},setup-token=${SETUP_TOKEN},gateway-token=${GATEWAY_TOKEN},gog-keyring=${GOG_KEYRING_PASSWORD}" \
+        --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh" \
+        --quiet; then
     ZONE="$z"
+    rm -f "$WITH_SPINNER_LOG"
     break
   fi
   # Detect the specific "zone is full" error and report it cleanly. Anything
   # else (auth, quota, etc.) is a real failure — print the captured stderr.
-  if grep -q "ZONE_RESOURCE_POOL_EXHAUSTED\|does not have enough resources" "$CREATE_ERR"; then
+  if grep -q "ZONE_RESOURCE_POOL_EXHAUSTED\|does not have enough resources" "$WITH_SPINNER_LOG"; then
     warn "  ${z} is at capacity, trying next zone…"
   else
     warn "  ${z} failed for an unexpected reason. Details:"
-    sed 's/^/    /' "$CREATE_ERR"
+    sed 's/^/    /' "$WITH_SPINNER_LOG"
   fi
+  rm -f "$WITH_SPINNER_LOG"
 done
 [ -n "$ZONE" ] || die "Could not create VM in any zone — likely a transient GCP capacity issue. Wait a few minutes and re-run."
 
@@ -215,16 +293,18 @@ success "VM created in ${ZONE} — IP: ${BOLD}${VM_IP}${NC}"
 # ── Firewall ─────────────────────────────────────────────────────────────────
 header "Opening ports"
 
-gcloud compute firewall-rules create allow-openclaw \
-  --project="$PROJECT_ID" \
-  --direction=INGRESS \
-  --priority=1000 \
-  --network=default \
-  --action=ALLOW \
-  --rules=tcp:80,tcp:443,tcp:8080,tcp:18789 \
-  --source-ranges=0.0.0.0/0 \
-  --target-tags=openclaw \
-  --quiet
+with_spinner "Creating firewall rule allow-openclaw" \
+  gcloud compute firewall-rules create allow-openclaw \
+    --project="$PROJECT_ID" \
+    --direction=INGRESS \
+    --priority=1000 \
+    --network=default \
+    --action=ALLOW \
+    --rules=tcp:80,tcp:443,tcp:8080,tcp:18789 \
+    --source-ranges=0.0.0.0/0 \
+    --target-tags=openclaw \
+    --quiet \
+  || die "Could not create firewall rule allow-openclaw."
 
 success "Port 80    → Caddy / Let's Encrypt ACME"
 success "Port 443   → OpenClaw dashboard (HTTPS via sslip.io)"
@@ -258,16 +338,21 @@ log "${DIM}leave this Cloud Shell tab — the VM will keep installing on its own
 SETUP_HEALTH="http://${VM_IP}:8080/health"
 MAX_ATTEMPTS=120   # 120 × 5s = 10 minutes
 READY=false
+HEALTH_FRAMES=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
 
 for i in $(seq 1 $MAX_ATTEMPTS); do
-  printf "\r  ${DIM}Attempt %d/%d — checking ${SETUP_HEALTH}${NC}" "$i" "$MAX_ATTEMPTS"
+  frame="${HEALTH_FRAMES[i % ${#HEALTH_FRAMES[@]}]}"
+  elapsed=$(( i * 5 ))
+  printf "\r  ${BLUE}%s${NC} Waiting for setup wizard ${DIM}— %ds elapsed, attempt %d/%d${NC}     " \
+    "$frame" "$elapsed" "$i" "$MAX_ATTEMPTS"
   if curl -sf --max-time 5 "$SETUP_HEALTH" >/dev/null 2>&1; then
     READY=true
+    printf "\r  ${GREEN}✓${NC} Setup wizard responded ${DIM}(after %ds)${NC}                                          \n" "$elapsed"
     break
   fi
   sleep 5
 done
-echo ""
+[ "$READY" = true ] || echo ""
 
 # ── Final status ─────────────────────────────────────────────────────────────
 # We re-print the URL with the same prominence as the upfront copy so the

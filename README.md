@@ -23,9 +23,9 @@ That's it. Everything else is automated.
 
 ## Deploy
 
-Click the button below. It opens Google Cloud Shell (a browser-based terminal) with this repo cloned, a tutorial pane on the right, and a banner in the terminal telling you the next command.
+Click the button below. It opens Google Cloud Shell (a browser-based terminal) with this repo cloned and a banner in the terminal telling you the next command.
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/iliasacademia/openclaw-gcp-deploy&tutorial=cloudshell_tutorial.md&cloudshell_print=cloudshell_banner.txt&shellonly=true)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/iliasacademia/openclaw-gcp-deploy&cloudshell_print=cloudshell_banner.txt&shellonly=true)
 
 You'll see a **"Trust repo"** dialog first — check the box and click **Confirm**. (This is Google's security gate for every Cloud Shell deploy button; it can't be bypassed.)
 
@@ -89,7 +89,6 @@ openclaw-gcp-deploy/
 ├── deploy.sh              # Main script — runs in Cloud Shell
 ├── startup.sh             # Runs on VM at first boot
 ├── cleanup.sh             # Tears down the project when you're done
-├── cloudshell_tutorial.md # Tutorial shown in the Cloud Shell pane
 └── setup-server/
     ├── server.js          # Express setup wizard (port 8080)
     ├── package.json
