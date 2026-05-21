@@ -229,12 +229,14 @@ function pairingList() {
   if (!r.ok) return { ok: false, err: r.err };
   try {
     const list = JSON.parse(r.out);
-    // Sanity check: openclaw should return an array or an object with
-    // .items/.pending. If we get something we don't recognise, log it so a
-    // future maintainer knows openclaw's output shape changed.
+    // OpenClaw's actual output shape (discovered via diagnostics on a live
+    // deploy) is `{ channel, requests: [...] }`. Older guesses included
+    // `items` / `pending` or a bare array — we keep all four fallbacks so a
+    // future format change doesn't break us silently again.
     if (!Array.isArray(list)
         && !Array.isArray(list?.items)
-        && !Array.isArray(list?.pending)) {
+        && !Array.isArray(list?.pending)
+        && !Array.isArray(list?.requests)) {
       logEvent('warn', 'pairing_list_unrecognized_shape', { sample: r.out.slice(0, 400) });
     }
     return { ok: true, list };
@@ -364,9 +366,10 @@ app.get('/api/pairings', requireToken, (_req, res) => {
     logEvent('warn', 'pairing_list_failed', { err: r.err });
     return res.status(200).json({ pending: [], error: r.err });
   }
-  // openclaw returns either an array of pending objects or an object with
-  // an items array — normalise both shapes to { pending: [...] }.
+  // openclaw's actual shape: `{ channel, requests: [...] }`. Older guesses
+  // (items / pending / bare array) kept as fallbacks for forward-compat.
   const items = Array.isArray(r.list) ? r.list
+                : Array.isArray(r.list?.requests) ? r.list.requests
                 : Array.isArray(r.list?.items) ? r.list.items
                 : Array.isArray(r.list?.pending) ? r.list.pending
                 : [];

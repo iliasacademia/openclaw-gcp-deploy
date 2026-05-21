@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.3` · **Last reviewed:** 2026-05-21
+**Current version:** setup-server `1.6.4` · **Last reviewed:** 2026-05-21
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -190,6 +190,13 @@ In rough order of how confusing they were when first encountered:
    - `models.providers.google-vertex` does NOT accept `project`/`location`
      keys; those come from env vars `GOOGLE_CLOUD_PROJECT` and
      `GOOGLE_CLOUD_LOCATION` on the gateway service
+
+2b. **`openclaw pairing list <channel> --json` output uses the `requests`
+    key**, not `items` / `pending` / a bare array. Each entry has nested
+    `meta.{username, firstName, lastName, accountId}`. Approve verb is
+    `openclaw pairing approve <channel> <code>`. Discovered the hard
+    way via wizard diagnostics in v1.6.4 — initial parser guessed three
+    different key names, all wrong.
 
 3. **`gateway.controlUi.allowedOrigins` is mandatory** for any
    non-loopback access. Lists exact origins (no wildcards). Ours is
@@ -376,7 +383,8 @@ Recent versions:
 | 1.6.0 | Robustness pass: URL printed early; pairing/cert poll timeouts with fallback; hard-fail bad Telegram tokens; correct gog success semantics; Caddy logs in diagnostics; gateway 'Failed' badge state |
 | 1.6.1 | URL re-printed at end of deploy with same prominence as the upfront copy; pairing wait shows progressive hints (30s/60s/120s/180s) instead of a static "Waiting…" message |
 | 1.6.2 | Fix step-counter copy (Step 1 of 2, not "1 of 1"); validate Telegram token before persisting to config (prevents stuck pairing screen after a bad-token submit); diagnostics now surface a connectivity probe (loopback / LAN / sslip HTTPS) and the raw `openclaw pairing list` stdout+stderr; verbose gog install logging with download size + curl/tar stderr |
-| 1.6.3 | **Live spinners + elapsed-seconds counters on every long gcloud call (`services enable`, `projects create`, billing link, SA create, VM create per zone, firewall create) so Cloud Shell no longer looks frozen for minutes. Drop the Cloud Shell tutorial pane (and its misleading START button) — banner in the terminal already covers what to do. Wizard health-poll loop now shows elapsed seconds, not just an attempt counter.** ← current |
+| 1.6.3 | Live spinners + elapsed-seconds counters on every long gcloud call (`services enable`, `projects create`, billing link, SA create, VM create per zone, firewall create) so Cloud Shell no longer looks frozen for minutes. Drop the Cloud Shell tutorial pane (and its misleading START button) — banner in the terminal already covers what to do. Wizard health-poll loop now shows elapsed seconds, not just an attempt counter. |
+| 1.6.4 | **Pairing parser actually works — `openclaw pairing list <channel> --json` returns `{ channel, requests: [...] }`, not the `items`/`pending`/bare-array shapes we'd guessed. Pairing card now shows the user's friendly name (Ilias Beshimov / @iliasbeshimov) instead of the raw Telegram id. `openclaw` user added to `systemd-journal` group so gateway logs surface in diagnostics (was showing "(no logs yet)" even with the service happily running).** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.

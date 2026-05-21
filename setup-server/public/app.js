@@ -288,7 +288,14 @@ async function pollForPairings() {
     if (pending.length > 0) {
       const item = pending[0];
       const code = item.code || item.pairingCode || item.token || '';
-      const user = item.userId || item.sender || item.from || item.id || 'new sender';
+      // openclaw nests user identity under .meta — prefer a friendly name
+      // ("Ilias Beshimov (@iliasbeshimov)") over the bare Telegram id.
+      const meta = item.meta || {};
+      const fullName = [meta.firstName, meta.lastName].filter(Boolean).join(' ');
+      const user = (fullName && meta.username) ? `${fullName} (@${meta.username})`
+                 : meta.username                ? '@' + meta.username
+                 : fullName                     ? fullName
+                 : item.userId || item.sender || item.from || item.id || 'new sender';
       if (code) {
         currentPairingCode = code;
         document.getElementById('pairing-code').textContent    = code;

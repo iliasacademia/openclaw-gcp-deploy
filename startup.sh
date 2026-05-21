@@ -90,6 +90,16 @@ if ! id openclaw >/dev/null 2>&1; then
     || fail "useradd openclaw failed"
 fi
 
+# Grant journal read access so the setup wizard's diagnostics endpoint can
+# tail `journalctl -u openclaw-gateway` etc. Without this, the diagnostics
+# panel shows "(no logs yet)" even when the service is happily running and
+# we lose our most useful debug surface. systemd-journal exists by default
+# on Debian; -a is idempotent.
+if getent group systemd-journal >/dev/null 2>&1; then
+  usermod -a -G systemd-journal openclaw \
+    || echo "WARN: could not add openclaw to systemd-journal group (diagnostics will be incomplete)"
+fi
+
 # ── Setup wizard install (early — before the slow openclaw install) ──────────
 # Starting the wizard BEFORE installing OpenClaw means that if the OpenClaw
 # install or first-start fails, the user can still reach /api/diagnostics and
