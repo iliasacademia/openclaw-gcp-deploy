@@ -229,6 +229,7 @@ cat > /home/openclaw/.openclaw/openclaw.json << OCCONF
       "token": "${GATEWAY_TOKEN}"
     },
     "controlUi": {
+      "dangerouslyDisableDeviceAuth": true,
       "allowedOrigins": [
         "http://${VM_IP}:18789",
         "https://${SSLIP_DOMAIN}"
