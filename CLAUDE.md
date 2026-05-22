@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.4` · **Last reviewed:** 2026-05-21
+**Current version:** setup-server `1.6.6` · **Last reviewed:** 2026-05-22
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -392,7 +392,8 @@ Recent versions:
 | 1.6.2 | Fix step-counter copy (Step 1 of 2, not "1 of 1"); validate Telegram token before persisting to config (prevents stuck pairing screen after a bad-token submit); diagnostics now surface a connectivity probe (loopback / LAN / sslip HTTPS) and the raw `openclaw pairing list` stdout+stderr; verbose gog install logging with download size + curl/tar stderr |
 | 1.6.3 | Live spinners + elapsed-seconds counters on every long gcloud call (`services enable`, `projects create`, billing link, SA create, VM create per zone, firewall create) so Cloud Shell no longer looks frozen for minutes. Drop the Cloud Shell tutorial pane (and its misleading START button) — banner in the terminal already covers what to do. Wizard health-poll loop now shows elapsed seconds, not just an attempt counter. |
 | 1.6.4 | **Pairing parser actually works — `openclaw pairing list <channel> --json` returns `{ channel, requests: [...] }`, not the `items`/`pending`/bare-array shapes we'd guessed. Pairing card now shows the user's friendly name (Ilias Beshimov / @iliasbeshimov) instead of the raw Telegram id. `openclaw` user added to `systemd-journal` group so gateway logs surface in diagnostics (was showing "(no logs yet)" even with the service happily running).** |
-| 1.6.5 | **Disable device-auth for the Control UI (`dangerouslyDisableDeviceAuth: true`) so new browsers with a valid token can connect without CLI approval. First attempt used a wrong key name (`requireDevicePairing`) which failed schema validation — fixed to use the actual schema key.** ← current |
+| 1.6.5 | Disable device-auth for the Control UI (`dangerouslyDisableDeviceAuth: true`) so new browsers with a valid token can connect without CLI approval. First attempt used a wrong key name (`requireDevicePairing`) which failed schema validation — fixed to use the actual schema key. |
+| 1.6.6 | **Stop showing "Gateway failed" badge during the install window — systemd's `inactive` state on a not-yet-created unit was being conflated with a real failure. Only systemd's explicit `failed` state should trigger that badge; everything else is "Starting…". Caught by Playwright E2E. Also: dashboard URL token moved to URL fragment (`#token=`) instead of query string (`?token=`) to stop OpenClaw's secure-context console warning and avoid leaking tokens via proxy/CDN access logs.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.

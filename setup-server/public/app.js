@@ -73,14 +73,21 @@ async function init() {
 
     // Distinguish between "still booting" and "actually broken". A failed
     // service in a restart loop should NOT look like "starting" to the user.
+    //
+    // Subtlety: systemd's `inactive` covers BOTH "never started" (e.g. while
+    // npm install -g openclaw is still running and the unit file hasn't been
+    // written yet) AND "crashed and Restart=on-failure gave up". The first is
+    // the dominant case during the deploy's install window — showing
+    // "Gateway failed" there is a false alarm that scares users. Real failure
+    // shows up as `failed` (systemd's explicit error state), so treat only
+    // that as an error and lump `inactive` in with "still booting".
     const gwState = (data.gatewayActiveState || '').trim();
     if (data.openclawRunning) {
       setBadge('Running', 'running');
-    } else if (gwState === 'failed' || gwState === 'inactive') {
+    } else if (gwState === 'failed') {
       setBadge('Gateway failed', 'error');
-    } else if (gwState === 'activating') {
-      setBadge('Starting…', 'starting');
     } else {
+      // inactive, activating, unknown, or anything else — still booting
       setBadge('Starting…', 'starting');
     }
 

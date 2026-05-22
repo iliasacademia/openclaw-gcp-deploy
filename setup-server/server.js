@@ -23,9 +23,14 @@ const GOG_CREDS_PATH   = '/home/openclaw/.gog/client_secret.json';
 
 // HTTPS dashboard URL via sslip.io + Caddy. Falls back to plain HTTP for
 // dev/test environments where Caddy isn't running.
+//
+// Token goes in the URL fragment (`#token=`), NOT the query string. OpenClaw's
+// dashboard reads from either, but warns in the browser console when query
+// is used, because query parameters appear in server-side access logs of any
+// proxy/CDN the request passes through. Fragments stay client-side.
 const DASHBOARD_BASE_URL = process.env.DASHBOARD_BASE_URL || `http://${VM_IP}:18789`;
 const DASHBOARD_URL = GATEWAY_TOKEN
-  ? `${DASHBOARD_BASE_URL}/?token=${encodeURIComponent(GATEWAY_TOKEN)}`
+  ? `${DASHBOARD_BASE_URL}/#token=${encodeURIComponent(GATEWAY_TOKEN)}`
   : DASHBOARD_BASE_URL;
 
 // Fail closed: refuse to start if the setup token is missing. The wizard
@@ -400,7 +405,7 @@ app.get('/api/dashboard-ready', requireToken, async (_req, res) => {
   // anyway" link when the cert is taking too long. The HTTP fallback hits
   // the dashboard's secure-context guard, but it's better than a blank page.
   const httpDashboardUrl = GATEWAY_TOKEN
-    ? `http://${VM_IP}:18789/?token=${encodeURIComponent(GATEWAY_TOKEN)}`
+    ? `http://${VM_IP}:18789/#token=${encodeURIComponent(GATEWAY_TOKEN)}`
     : `http://${VM_IP}:18789`;
   res.json({ ready, dashboardUrl: DASHBOARD_URL, httpDashboardUrl });
 });
