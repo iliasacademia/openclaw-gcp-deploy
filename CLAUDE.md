@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.24` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.25` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -466,7 +466,8 @@ Recent versions:
 | 1.6.21 | Fix the ADC step dying with `gcloud auth application-default login failed` even though gcloud actually succeeded. Root cause: `{ printf "y\n"; exec cat </dev/tty; }` keeps reading after gcloud exits; its next write to the closed pipe triggers SIGPIPE; `set -o pipefail` propagates that as pipeline failure. Now disable pipefail around just that pipeline and check gcloud's true exit via `PIPESTATUS[1]`. Also adds "Do you want to continue" to the warning-line grep filter. Banner simplified to one line "Easy OpenClaw Deployment". README adds a callout about re-clicking the deploy button if Cloud Shell stalls. |
 | 1.6.22 | Replace the printf+cat hack for ADC auth with an `expect` script. The old hack consumed the user's verification-code paste BEFORE gcloud printed its "Once finished, enter the verification code:" prompt — so the prompt appeared with no visible cursor (paste already in the pipe), the user thought it failed, pasted again, and the second paste hit a closed pipe. With `expect`, we wait for gcloud's prompt FIRST, then ask the user with a labeled "▸ Paste verification code here and press Enter:" prompt. |
 | 1.6.23 | Add a "Use a different bot" link to the pairing screen footer, next to "Already paired earlier? Skip to dashboard". The restartTelegram path already existed but was only reachable after the 3-minute timeout. Now visible from the start, for the case where a Telegram bot token is in use by an older OpenClaw VM that's still polling — the new claw never sees `/start` because the old one grabs it first. |
-| 1.6.24 | **Docs refresh after the v1.6.0-v1.6.23 functional work: README's "What you get" / "What the script does" / "After deploy" sections now describe the actual current flow (ADC step, in-wizard gog OAuth with paste-the-redirect-URL, the URL-fragment dashboard token). CLAUDE.md §1, §2 (flow diagram), and §9 (open work) updated — §9 stops claiming the wizard "directs the user to the OpenClaw dashboard's gog skill" since v1.6.14+ does the whole flow in our own UI.** ← current |
+| 1.6.24 | Docs refresh after the v1.6.0-v1.6.23 functional work: README's "What you get" / "What the script does" / "After deploy" sections now describe the actual current flow (ADC step, in-wizard gog OAuth with paste-the-redirect-URL, the URL-fragment dashboard token). CLAUDE.md §1, §2 (flow diagram), and §9 (open work) updated — §9 stops claiming the wizard "directs the user to the OpenClaw dashboard's gog skill" since v1.6.14+ does the whole flow in our own UI. |
+| 1.6.25 | **README Prerequisites rewritten to (1) recommend a NEW Google account explicitly — fresh trial eligibility, blank-slate playground, and isolated OAuth scopes from your personal account — and (2) make the Cloud Billing account terminology explicit instead of leaving it implicit in "free trial activated".** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
