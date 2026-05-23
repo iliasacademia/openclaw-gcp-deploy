@@ -555,6 +555,61 @@ input[type="text"].error  { border-color: var(--red); }
 .copy-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
 .copy-btn.copied { background: #16a34a; color: white; border-color: #16a34a; }
 
+/* ── File-upload dropzone for the gog OAuth JSON ───────────────────────────── */
+.file-drop {
+  display: block;
+  margin: 12px 0;
+  padding: 28px 18px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.file-drop:hover, .file-drop.dragover {
+  border-color: var(--accent);
+  background: var(--surface2);
+}
+.file-drop.hidden { display: none; }
+.file-drop-icon { font-size: 1.8em; margin-bottom: 6px; }
+.file-drop-title { font-size: 0.95rem; color: var(--text); }
+.file-drop-title code { background: var(--surface2); padding: 1px 6px; border-radius: 4px; font-size: 0.88em; }
+.file-drop-sub { font-size: 0.82rem; color: var(--text-muted); margin-top: 4px; }
+
+.g-file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 12px 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+}
+.g-file-info.hidden { display: none; }
+.g-file-check { color: #16a34a; font-weight: 700; font-size: 1.1em; }
+.g-file-name { flex: 1; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+.btn-link-inline {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.g-advanced {
+  margin: 10px 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.g-advanced summary { cursor: pointer; padding: 4px 0; user-select: none; }
+.g-advanced[open] summary { color: var(--text); margin-bottom: 6px; }
+.g-advanced textarea { margin-top: 6px; }
+
 .g-steps textarea {
   width: 100%;
   min-height: 120px;

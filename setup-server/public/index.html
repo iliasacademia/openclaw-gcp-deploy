@@ -275,15 +275,31 @@
             </div>
           </li>
           <li>
-            <strong>Paste the JSON below</strong>.
+            <strong>Upload the JSON file</strong>.
             <div class="g-detail">
-              <ul>
-                <li>Open the downloaded <code>client_secret_*.json</code> file in any text editor (TextEdit, Notepad, VS Code…)</li>
-                <li>Select all (<strong>⌘+A</strong> on Mac, <strong>Ctrl+A</strong> on Windows), copy</li>
-                <li>Paste into the box below, then click <strong>Save credentials</strong></li>
-              </ul>
+              Drop (or pick) the <code>client_secret_*.json</code> file you just downloaded from Google. We read it locally in your browser — nothing leaves your machine until you click Save.
             </div>
-            <textarea id="g-json" rows="6" placeholder='{"installed":{"client_id":"...","client_secret":"...","auth_uri":"https://accounts.google.com/o/oauth2/auth",...}}'></textarea>
+
+            <label for="g-file" id="g-file-drop" class="file-drop">
+              <input type="file" id="g-file" accept=".json,application/json" hidden onchange="handleGogFile(event)" />
+              <div class="file-drop-inner">
+                <div class="file-drop-icon">📁</div>
+                <div class="file-drop-title">Drop your <code>client_secret_*.json</code> here</div>
+                <div class="file-drop-sub">or click to browse</div>
+              </div>
+            </label>
+
+            <div id="g-file-info" class="g-file-info hidden">
+              <span class="g-file-check">✓</span>
+              <span id="g-file-name" class="g-file-name"></span>
+              <button type="button" class="btn-link-inline" onclick="resetGogFile()">change</button>
+            </div>
+
+            <details class="g-advanced">
+              <summary>Advanced: paste JSON manually</summary>
+              <textarea id="g-json" rows="6" placeholder='{"installed":{"client_id":"...","client_secret":"...","auth_uri":"https://accounts.google.com/o/oauth2/auth",...}}'></textarea>
+            </details>
+
             <button id="g-save" class="btn btn-primary btn-large" onclick="saveGoogleCredentials()">
               Save credentials →
             </button>

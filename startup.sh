@@ -135,6 +135,7 @@ GATEWAY_TOKEN=${GATEWAY_TOKEN}
 DASHBOARD_BASE_URL=https://${SSLIP_DOMAIN}
 SSLIP_DOMAIN=${SSLIP_DOMAIN}
 STARTUP_LOG=/var/log/openclaw-startup.log
+GOG_KEYRING_PASSWORD=${GOG_KEYRING}
 SENV
 chmod 0600 /opt/openclaw-deploy/setup-server/.env
 

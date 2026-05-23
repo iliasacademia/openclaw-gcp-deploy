@@ -444,6 +444,7 @@ function enterGoogleScreen(ev) {
   if (err) err.classList.add('hidden');
   const ta = document.getElementById('g-json');
   if (ta) ta.value = '';
+  resetGogFile();
   const btn = document.getElementById('g-save');
   if (btn) {
     btn.disabled = false;
@@ -456,15 +457,105 @@ function exitGoogleScreen(ev) {
   showScreen('screen-done');
 }
 
+// Holds the parsed-and-validated client_secret JSON after a successful file
+// upload. Cleared when the user clicks "change" or chooses a different file.
+let gogUploadedJson = null;
+
+// Validate a parsed client_secret object and return null on success or an
+// error message on failure. Used by both the file-upload path and the
+// "advanced: paste" fallback so the rules are identical.
+function validateGogJson(parsed) {
+  if (!parsed || typeof parsed !== 'object') {
+    return 'That file doesn\'t look like an OAuth JSON object.';
+  }
+  if (parsed.type === 'service_account') {
+    return 'That\'s a service-account key, not an OAuth client. Go back to the Clients page → + Create client → Application type: Desktop app, and download THAT JSON.';
+  }
+  const clientId = parsed.installed?.client_id || parsed.web?.client_id;
+  if (!clientId) {
+    return 'JSON is missing an OAuth client_id. Make sure you picked Application type "Desktop app" when creating the OAuth client.';
+  }
+  return null;
+}
+
+function showGogError(msg) {
+  const err = document.getElementById('g-error');
+  if (!err) return;
+  err.textContent = msg;
+  err.classList.remove('hidden');
+}
+
+function clearGogError() {
+  const err = document.getElementById('g-error');
+  if (err) err.classList.add('hidden');
+}
+
+async function handleGogFile(eventOrFile) {
+  clearGogError();
+  const file = eventOrFile?.target?.files?.[0] || eventOrFile;
+  if (!(file instanceof File)) return;
+
+  if (file.size > 64 * 1024) {
+    showGogError('That file is suspiciously large (>64KB). OAuth client_secret files are tiny — make sure you picked the right one.');
+    return;
+  }
+
+  let text;
+  try { text = await file.text(); }
+  catch (e) { showGogError('Could not read the file: ' + e.message); return; }
+
+  let parsed;
+  try { parsed = JSON.parse(text); }
+  catch (e) { showGogError('That file isn\'t valid JSON: ' + e.message); return; }
+
+  const problem = validateGogJson(parsed);
+  if (problem) { showGogError(problem); return; }
+
+  gogUploadedJson = text;
+  document.getElementById('g-file-name').textContent = file.name;
+  document.getElementById('g-file-info').classList.remove('hidden');
+  document.getElementById('g-file-drop').classList.add('hidden');
+}
+
+function resetGogFile() {
+  gogUploadedJson = null;
+  const input = document.getElementById('g-file');
+  if (input) input.value = '';
+  document.getElementById('g-file-info').classList.add('hidden');
+  document.getElementById('g-file-drop').classList.remove('hidden');
+  clearGogError();
+}
+
+// Wire up drag-and-drop on the dropzone. Called once on DOMContentLoaded.
+function wireGogDropzone() {
+  const drop = document.getElementById('g-file-drop');
+  if (!drop) return;
+  ['dragenter', 'dragover'].forEach(ev =>
+    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('dragover'); })
+  );
+  ['dragleave', 'drop'].forEach(ev =>
+    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('dragover'); })
+  );
+  drop.addEventListener('drop', e => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) handleGogFile(f);
+  });
+}
+
 async function saveGoogleCredentials() {
   const ta  = document.getElementById('g-json');
   const btn = document.getElementById('g-save');
   const err = document.getElementById('g-error');
 
   err.classList.add('hidden');
-  const raw = (ta?.value || '').trim();
+
+  // Prefer the uploaded-file payload. Fall back to the advanced textarea so
+  // users with the JSON on the clipboard but no file aren't blocked.
+  let raw = gogUploadedJson;
+  if (!raw) raw = (ta?.value || '').trim();
+
   if (!raw) {
-    err.textContent = 'Please paste the JSON before clicking Save.';
+    err.textContent = 'Please upload your client_secret_*.json file (or paste its contents into the Advanced panel).';
     err.classList.remove('hidden');
     return;
   }
@@ -652,5 +743,6 @@ document.addEventListener('DOMContentLoaded', () => {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') submitTelegram(); });
     inp.addEventListener('input', clearTelegramError);
   }
+  wireGogDropzone();
   init();
 });
