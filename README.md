@@ -35,7 +35,7 @@ Then click into the terminal at the bottom of Cloud Shell and type:
 bash deploy.sh
 ```
 
-Press Enter and sit back — it takes about 5 minutes and asks no questions.
+Press Enter. The script takes about 5-7 minutes total. The **first time you ever run it on a Cloud Shell account** it pauses once for a 30-second Google OAuth approval (so OpenClaw can talk to Vertex AI on your behalf) — open the URL it prints, click Allow, paste the code back. Subsequent runs skip this step.
 
 ---
 
@@ -43,6 +43,7 @@ Press Enter and sit back — it takes about 5 minutes and asks no questions.
 
 | Step | What happens |
 |------|-------------|
+| 0 | (First run only) Asks you to approve Vertex AI access via Google OAuth — paste the verification code back |
 | 1 | Creates a new GCP project called **My First Claw Agent** |
 | 2 | Enables Compute Engine + Vertex AI + IAM APIs |
 | 3 | Creates a dedicated service account with **only** Vertex AI access (least privilege) |
