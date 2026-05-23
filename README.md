@@ -13,7 +13,7 @@ Deploy [OpenClaw](https://openclaw.ai) on Google Cloud in ~5 minutes with a sing
 ## Prerequisites
 
 1. **A Google account** — [sign up here](https://accounts.google.com)
-2. **2-Step Verification enabled on that Google account** — [turn it on here](https://myaccount.google.com/signinoptions/twosv). Google requires 2SV before you can create the OAuth client we'll need later to give the agent access to Gmail, Drive, and Calendar. Easier to do this now than to be blocked partway through.
+2. **Two-step verification enabled on that Google account** — [turn it on here](https://myaccount.google.com/signinoptions/twosv). Google requires two-step verification before you can create the OAuth client we'll need later to give the agent access to Gmail, Drive, and Calendar. Easier to do this now than to be blocked partway through.
 3. **A Google Cloud account with free trial activated** — [start here](https://console.cloud.google.com/freetrial)
    - You get **$300 in free credits** valid for 90 days
    - A credit card is required to verify identity — you won't be charged
