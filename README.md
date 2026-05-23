@@ -1,12 +1,13 @@
-# 🦞 OpenClaw — One-Click GCP Deploy
+# 🦞 OpenClaw — Easy GCP Deploy
 
-Deploy [OpenClaw](https://openclaw.ai) on Google Cloud in ~5 minutes with a single button click. No terminal experience needed.
+Deploy [OpenClaw](https://openclaw.ai) on Google Cloud in ~5 minutes with a single button click. No terminal experience needed beyond clicking through a few Google sign-in screens.
 
 **What you get:**
-- OpenClaw running on a dedicated GCP VM
-- Gemini 3.1 Pro (Vertex AI) as the AI brain — no API key required, uses your GCP credits
-- A guided setup wizard to connect your Telegram bot
-- Full OpenClaw dashboard at your VM's IP
+- OpenClaw running on a dedicated GCP VM (Debian 13, n2-standard-2)
+- Gemini 3.1 Pro via Vertex AI — billed to your $300 GCP free trial, no separate API key
+- A guided web wizard for Telegram bot pairing
+- Optional in-wizard Google sign-in for Gmail / Drive / Calendar access (the agent can read your inbox, save research notes to Docs/Sheets, manage Calendar)
+- HTTPS-ready OpenClaw dashboard at a `<ip>.sslip.io` subdomain (auto Let's Encrypt cert)
 
 ---
 
@@ -50,31 +51,39 @@ Press Enter. The script takes about 5-7 minutes total. The **first time you ever
 
 | Step | What happens |
 |------|-------------|
-| 0 | (First run only) Asks you to approve Vertex AI access via Google OAuth — paste the verification code back |
+| 0 | (First run on a Cloud Shell account only) Pauses for a ~30-second Google OAuth approval. Open the URL the script prints, click Allow, paste the verification code back. This gives OpenClaw your Google account's permission to call Vertex AI — the equivalent of an API key. |
 | 1 | Creates a new GCP project called **My First Claw Agent** |
-| 2 | Enables Compute Engine + Vertex AI + IAM APIs |
-| 3 | Creates a dedicated service account with **only** Vertex AI access (least privilege) |
+| 2 | Enables Compute Engine + Vertex AI + IAM + Workspace APIs |
+| 3 | Creates a dedicated service account for the VM with `roles/aiplatform.user` (least privilege) |
 | 4 | Creates a VM (Debian 13, n2-standard-2, 20 GB disk) — tries 8 zones for capacity |
-| 5 | Opens firewall ports for the dashboard and setup wizard |
-| 6 | Installs Node.js 24 + OpenClaw on the VM |
+| 5 | Opens firewall ports 80 / 443 / 8080 / 18789 |
+| 6 | Installs Node.js 24 + OpenClaw + the `gog` Google Workspace CLI + Caddy on the VM |
 | 7 | Validates the OpenClaw config before starting the gateway |
-| 8 | Starts OpenClaw + the setup wizard |
-| 9 | Prints your setup URL |
+| 8 | Starts the setup wizard and the OpenClaw gateway |
+| 9 | Prints your setup wizard URL |
 
-**Total time: ~5 minutes.**
+**Total time: ~5-7 minutes** (most of it the VM's first-boot install).
 
 ---
 
-## After deploy
+## After deploy — walk the wizard
 
 1. Open the setup wizard URL printed at the end (e.g. `http://YOUR_IP:8080?token=...`) in your browser.
-   - **Use a regular Chrome/Firefox/Safari window — not Incognito.** Incognito mode blocks plain HTTP and will show a "site doesn't support secure connection" warning. (The wizard itself is HTTP because we don't have a domain; the OpenClaw dashboard *is* HTTPS via Let's Encrypt.)
-2. Step 1 of 2 — paste your Telegram bot token (the wizard explains how to get one from @BotFather).
-3. Step 2 of 2 — click the **Open my bot in Telegram** button and send `/start`. The wizard polls for your pairing request and shows an **Approve** button when it arrives. One click and you're done.
-4. Click **Open OpenClaw Dashboard** — the link includes your gateway token, and Caddy provides a valid Let's Encrypt cert so there's no browser warning.
-5. (Optional) Click **Connect Google** in the wizard for Gmail/Drive/Calendar access. The wizard walks you through OAuth setup in Google Cloud Console.
+   - **Use a regular Chrome / Firefox / Safari window — not Incognito.** Incognito blocks plain HTTP and will show a "site doesn't support secure connection" warning. (The wizard runs over HTTP because it doesn't have a domain. The OpenClaw dashboard at the end runs over HTTPS.)
 
-The dashboard token is the only thing protecting your gateway — bookmark the link with the token included, and don't share it.
+2. **Step 1 of 2 — Connect Telegram.** The wizard shows step-by-step BotFather instructions; you create a private bot, copy the token BotFather sends, paste it in. The wizard verifies the token against Telegram and configures OpenClaw to use it.
+
+3. **Step 2 of 2 — Pair your account.** Click "Open my bot in Telegram", send `/start` to the bot. Within a few seconds the wizard shows a card with your name and a one-click Approve button.
+
+4. **Done screen.** You see "You're all set!" with a link to the OpenClaw dashboard (HTTPS, via the sslip.io / Let's Encrypt cert auto-fetched in the background). Send your bot a message on Telegram — it replies via Vertex AI / Gemini 3.1 Pro. First reply may take a few seconds while the model warms up.
+
+5. **Optional — Connect Google.** From the Done screen, click "Connect Google" if you want your assistant to read Gmail, search Drive, save research notes into new Docs / Sheets, or manage Calendar. The wizard walks you through:
+   - Configuring the OAuth consent screen in Google Cloud Console (the wizard tells you exactly what to type and click).
+   - Creating an OAuth Desktop client and downloading its JSON.
+   - Uploading that JSON via a drag-and-drop dropzone in the wizard.
+   - An **in-wizard** Google sign-in: the wizard opens a Google sign-in page in a new tab, you sign in, the browser redirects to `localhost:...?code=...` (a "site can't be reached" page — that's expected), you copy the URL from the address bar and paste it back into the wizard. The wizard exchanges the code for refresh tokens and stores them. No SSH, no CLI commands.
+
+Bookmark the dashboard URL **with its `#token=` fragment** — that token is the only thing protecting your gateway. Don't share it.
 
 ---
 

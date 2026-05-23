@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.23` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.24` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -15,69 +15,94 @@
 
 ## 1. What this project is
 
-A **one-click "Deploy to GCP" tool** for [OpenClaw](https://openclaw.ai)
+An **easy "Deploy to GCP" tool** for [OpenClaw](https://openclaw.ai)
 (a personal AI assistant with channel integrations like Telegram).
 The goal is that a **non-technical user** can:
 
 1. Click a button on the GitHub README
-2. Trust the repo in Cloud Shell
+2. Trust the repo in Cloud Shell, click Authorize Cloud Shell
 3. Type `bash deploy.sh`
-4. Wait ~5-7 minutes
-5. Paste a Telegram bot token in the resulting web wizard
-6. Send `/start` to their bot
-7. Click "Approve" in the wizard
-8. Open the OpenClaw dashboard
+4. **One-time** Google OAuth approval (~30s — prints a URL, paste back the verification code)
+5. Wait ~5-7 minutes for the VM to come up
+6. Paste a Telegram bot token in the resulting web wizard
+7. Send `/start` to their bot
+8. Click "Approve" in the wizard
+9. (Optional) Connect Google — upload an OAuth client JSON + an in-wizard Google sign-in flow
+10. Chat with the assistant on Telegram
 
-…and have a working AI assistant. **No terminal commands, no SSH, no
-config files, no OAuth dance for Vertex AI.**
+…and have a working AI assistant. **No SSH, no manual config files,
+no CLI commands.** The one user-driven interactive step (Google OAuth
+for ADC) is wrapped inside `deploy.sh` itself via `expect`, with a
+labeled "Paste verification code here" prompt.
 
-Vertex AI is the LLM brain (Gemini 3.1 Pro), authenticated via the
-VM's service account — no API keys anywhere. The user pays only for
-GCP compute + Vertex tokens, which fit comfortably in the $300 free
-trial.
+Vertex AI is the LLM brain (Gemini 3.1 Pro). OpenClaw 2026.5.20's
+google-vertex provider requires `authorized_user` ADC (the GCE
+metadata-server service-account credentials are not honored — see §5
+#2c), so the deploy ships the user's `~/.config/gcloud/application_default_credentials.json`
+to the VM via metadata. Billing for Vertex tokens lands on the user's
+GCP project, covered by the $300 free trial.
 
 ---
 
 ## 2. End-to-end user flow
 
 ```
-┌──────────────────┐  click   ┌──────────────┐  type   ┌─────────────┐
-│ GitHub README    │ ────────▶│ Cloud Shell  │ ───────▶│ bash        │
-│ "Open in Cloud   │          │ (trust repo) │         │ deploy.sh   │
-│  Shell" button   │          │              │         │             │
-└──────────────────┘          └──────────────┘         └──────┬──────┘
-                                                              │
-                          ┌───────────────────────────────────┘
-                          ▼  (~5-7 min)
+┌──────────────────┐  click   ┌──────────────────────┐  type   ┌─────────────┐
+│ GitHub README    │ ────────▶│ Cloud Shell:         │ ───────▶│ bash        │
+│ "Open in Cloud   │          │  - Trust repo        │         │ deploy.sh   │
+│  Shell" button   │          │  - Authorize         │         │             │
+└──────────────────┘          └──────────────────────┘         └──────┬──────┘
+                                                                      │
+                              ┌───────────────────────────────────────┘
+                              ▼
+        ┌─────────────────────────────────────────────────┐
+        │ deploy.sh asks for Google OAuth approval        │
+        │  (expect-driven, ~30s):                         │
+        │   - prints URL, labeled "Paste code here:"      │
+        │   - writes authorized_user ADC for the user     │
+        │   - file shipped to VM via metadata             │
+        └─────────────────────┬───────────────────────────┘
+                              │  (~5-7 min)
+                              ▼
         ┌─────────────────────────────────────────────┐
         │ GCP project + dedicated SA + VM + firewall  │
         │ + Caddy + Let's Encrypt cert via sslip.io   │
         │ + OpenClaw + setup wizard + gog CLI         │
         └─────────────────────┬───────────────────────┘
-                              │
-                              ▼  deploy.sh prints
+                              │  deploy.sh prints
+                              ▼
         http://<VM_IP>:8080?token=<single-use SETUP_TOKEN>
-                              │
-                              ▼  user opens URL
+                              │  user opens URL
+                              ▼
         ┌─────────────────────────────────────────────┐
         │ SETUP WIZARD (Express on VM, port 8080)     │
-        │                                              │
-        │ Step 1: paste Telegram bot token             │
-        │   ↓ (writes config, restarts gateway)        │
-        │ Step 2: pairing                              │
+        │                                             │
+        │ Step 1 of 2: paste Telegram bot token       │
+        │   ↓ /api/telegram validates against         │
+        │     Telegram getMe, writes openclaw.json,   │
+        │     restarts gateway                        │
+        │ Step 2 of 2: pair                           │
         │   - user sends /start on Telegram           │
-        │   - wizard polls openclaw pairing list       │
-        │   - shows pending pairing card               │
-        │   - user clicks "Approve this user"          │
-        │   - wizard runs openclaw pairing approve     │
-        │ Done: click "Open OpenClaw Dashboard →"      │
+        │   - wizard polls openclaw pairing list      │
+        │   - shows pending pairing card with name    │
+        │   - user clicks "Approve this user"         │
+        │ Done: bot replies via Vertex/Gemini         │
+        │                                             │
+        │ Optional next step (Connect Google):        │
+        │   - drag client_secret_*.json dropzone      │
+        │   - enter Google email                      │
+        │   - "Open Google sign-in" → user follows    │
+        │     3 Google screens → "site can't be       │
+        │     reached" → paste URL back into wizard   │
+        │   - wizard exchanges code via gog --remote  │
+        │     --step 2, stores refresh tokens         │
         └─────────────────────┬───────────────────────┘
-                              │  link is https://<ip-dashed>.sslip.io/?token=<GATEWAY_TOKEN>
+                              │  link is https://<ip-dashed>.sslip.io/#token=<GATEWAY_TOKEN>
                               ▼
         ┌─────────────────────────────────────────────┐
         │ OPENCLAW DASHBOARD (Caddy → port 18789)     │
-        │ - token pre-filled from URL                  │
-        │ - click Connect → land in OpenClaw UI       │
+        │ - token in URL fragment (#token=...)        │
+        │ - chat, skills, agents, settings            │
         └─────────────────────────────────────────────┘
 ```
 
@@ -342,39 +367,54 @@ Those require a real deploy.
 
 ## 9. What's NOT solved / open work
 
-### Google OAuth: the consent screen + approval require user clicks
-As of 1.5.0, the wizard has a dedicated "Connect Google" panel that
-accepts a pasted client_secret.json, saves it to
-`/home/openclaw/.gog/client_secret.json`, runs `gog auth credentials`
-server-side, and then directs the user to the OpenClaw dashboard's
-gog skill for the final OAuth approval step. The Google-Console-side
-bits (configure consent screen, create OAuth client, download JSON)
-still need user clicks — Google's API does not allow programmatic
-consent-screen configuration for external user types.
+### Google Console setup steps require user clicks
+The Connect Google flow still requires the user to click through three
+things in Google Cloud Console:
+1. Configure the OAuth consent screen (the new Google Auth Platform
+   wizard: App Info → Audience → Contact Info → Finish).
+2. Add themselves as a Test User on the Audience page.
+3. Create an OAuth Desktop client and download the JSON.
 
-Possible next step: implement a server-side OAuth flow inside our
-setup wizard with a custom redirect URI back to our public HTTPS
-endpoint, so the user never has to use OpenClaw's dashboard for gog
-auth. Significant complexity — defer until usage justifies.
+Google's API does not allow programmatic OAuth-consent-screen
+configuration for external user types, so these clicks are
+unavoidable. The wizard provides step-by-step instructions with
+exact field names, recommended values (with copy buttons), and deep
+links to the right Google Console pages.
+
+The OAuth sign-in itself (was the missing piece pre-v1.6.14) IS now
+fully driven from the wizard via `gog auth add --remote --step 1 /
+--step 2`. User pastes the redirect URL, server exchanges the code.
 
 ### Caddy / Let's Encrypt failure mode is rough
-If port 80 is blocked, sslip.io is down, or Let's Encrypt rate-limits
-the IP, the dashboard URL will return TLS errors and there's no
-in-wizard fallback. Mitigation: deploy.sh's poll loop only checks the
-setup wizard (port 8080), so the deploy "succeeds" even when HTTPS is
-broken. The wizard's diagnostics panel would still show this if
-configured to surface Caddy state — currently doesn't.
+If port 80 is blocked, the sslip.io shared LE rate limit is hit, or
+Caddy's request to LE just fails, the dashboard URL returns TLS
+errors. The wizard's done screen polls `/api/dashboard-ready` and
+surfaces "Open over HTTP anyway" after ~5 minutes, but the HTTP
+dashboard fails OpenClaw's secure-context guard for some features.
+Possible mitigation: try `nip.io` as a fallback domain since it has
+a separate LE quota; not yet implemented.
 
 ### No upgrade path
 There's no way to update an existing deploy. The user has to
-`cleanup.sh` and redeploy. Acceptable for v1.
+`cleanup.sh` and redeploy. Acceptable for v1; git tags from
+v1.6.0 onwards make rollback simple if a future deploy regresses.
 
 ### Setup wizard is still plain HTTP
 We HTTPS the dashboard via Caddy, but the wizard at port 8080 is plain
 HTTP. The wizard token travels in cleartext over the public internet
 for ~5 minutes between deploy.sh printing it and the user finishing.
 Token is single-use and short-lived, so practical risk is small; a
-clean solution would put both behind Caddy.
+clean solution would put both behind Caddy. Note: `navigator.clipboard`
+is unavailable on HTTP origins, so the wizard's copy buttons use
+`document.execCommand('copy')` fallback.
+
+### Vertex AI authorized_user ADC requirement
+OpenClaw 2026.5.20 explicitly checks for `type: "authorized_user"` in
+the ADC file. It does NOT honor service-account creds or the GCE
+metadata server. This is why deploy.sh has to run `gcloud auth
+application-default login` interactively. If OpenClaw ever broadens
+its acceptable credential types (e.g. service account, metadata-server),
+we can drop the interactive step and rely on the VM's SA.
 
 ### No HTTPS for the IP-based fallback
 `controlUi.allowedOrigins` lists `http://<ip>:18789` for loopback
@@ -425,7 +465,8 @@ Recent versions:
 | 1.6.20 | Stop abbreviating "two-step verification" as "2SV" in the README. The abbreviation was confusing to readers who aren't already familiar with the term. Spell it out in full. Wizard HTML already used the Google-branded form "2-Step Verification" as link text only, no abbreviation, so no changes there. |
 | 1.6.21 | Fix the ADC step dying with `gcloud auth application-default login failed` even though gcloud actually succeeded. Root cause: `{ printf "y\n"; exec cat </dev/tty; }` keeps reading after gcloud exits; its next write to the closed pipe triggers SIGPIPE; `set -o pipefail` propagates that as pipeline failure. Now disable pipefail around just that pipeline and check gcloud's true exit via `PIPESTATUS[1]`. Also adds "Do you want to continue" to the warning-line grep filter. Banner simplified to one line "Easy OpenClaw Deployment". README adds a callout about re-clicking the deploy button if Cloud Shell stalls. |
 | 1.6.22 | Replace the printf+cat hack for ADC auth with an `expect` script. The old hack consumed the user's verification-code paste BEFORE gcloud printed its "Once finished, enter the verification code:" prompt — so the prompt appeared with no visible cursor (paste already in the pipe), the user thought it failed, pasted again, and the second paste hit a closed pipe. With `expect`, we wait for gcloud's prompt FIRST, then ask the user with a labeled "▸ Paste verification code here and press Enter:" prompt. |
-| 1.6.23 | **Add a "Use a different bot" link to the pairing screen footer, next to "Already paired earlier? Skip to dashboard". The restartTelegram path already existed but was only reachable after the 3-minute timeout. Now visible from the start, for the case where a Telegram bot token is in use by an older OpenClaw VM that's still polling — the new claw never sees `/start` because the old one grabs it first.** ← current |
+| 1.6.23 | Add a "Use a different bot" link to the pairing screen footer, next to "Already paired earlier? Skip to dashboard". The restartTelegram path already existed but was only reachable after the 3-minute timeout. Now visible from the start, for the case where a Telegram bot token is in use by an older OpenClaw VM that's still polling — the new claw never sees `/start` because the old one grabs it first. |
+| 1.6.24 | **Docs refresh after the v1.6.0-v1.6.23 functional work: README's "What you get" / "What the script does" / "After deploy" sections now describe the actual current flow (ADC step, in-wizard gog OAuth with paste-the-redirect-URL, the URL-fragment dashboard token). CLAUDE.md §1, §2 (flow diagram), and §9 (open work) updated — §9 stops claiming the wizard "directs the user to the OpenClaw dashboard's gog skill" since v1.6.14+ does the whole flow in our own UI.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
