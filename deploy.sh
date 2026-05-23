@@ -92,17 +92,18 @@ countdown() {
 }
 
 # ── Banner ───────────────────────────────────────────────────────────────────
+# Replaced the original figlet "OpenClaw" ASCII (which read as ambiguous block
+# shapes rather than letters on first glance) with a plain centered title
+# that says what it is. "GCP Deploy" stays as a dim subscript underneath.
 clear
-echo -e "${BLUE}${BOLD}"
-cat << 'EOF'
-   ___                  ____ _
-  / _ \ _ __   ___ _ __|  _ \ |__ ____      __
- | | | | '_ \ / _ \ '_ \ | | | '_ V _ \ /\/  |
- | |_| | |_) |  __/ | | | |_| | | | | | |>  <|
-  \___/| .__/ \___|_| |_|____/|_| |_| |_/_/\_\
-       |_|                          GCP Deploy
-EOF
-echo -e "${NC}"
+echo ""
+echo -e "  ${BLUE}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "  ${BLUE}${BOLD}║${NC}                                                              ${BLUE}${BOLD}║${NC}"
+echo -e "  ${BLUE}${BOLD}║${NC}                ${BOLD}Easy OpenClaw Deploy by Ilias${NC}                 ${BLUE}${BOLD}║${NC}"
+echo -e "  ${BLUE}${BOLD}║${NC}                        ${DIM}· GCP Deploy ·${NC}                        ${BLUE}${BOLD}║${NC}"
+echo -e "  ${BLUE}${BOLD}║${NC}                                                              ${BLUE}${BOLD}║${NC}"
+echo -e "  ${BLUE}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
 echo -e "  Deploying OpenClaw on Google Cloud (~5 minutes)."
 echo -e "  ${DIM}No configuration needed — just sit back.${NC}\n"
 

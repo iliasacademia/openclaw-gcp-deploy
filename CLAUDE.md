@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.8` · **Last reviewed:** 2026-05-22
+**Current version:** setup-server `1.6.9` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -395,7 +395,8 @@ Recent versions:
 | 1.6.5 | Disable device-auth for the Control UI (`dangerouslyDisableDeviceAuth: true`) so new browsers with a valid token can connect without CLI approval. First attempt used a wrong key name (`requireDevicePairing`) which failed schema validation — fixed to use the actual schema key. |
 | 1.6.6 | Stop showing "Gateway failed" badge during the install window — systemd's `inactive` state on a not-yet-created unit was being conflated with a real failure. Only systemd's explicit `failed` state should trigger that badge; everything else is "Starting…". Caught by Playwright E2E. Also: dashboard URL token moved to URL fragment (`#token=`) instead of query string (`?token=`) to stop OpenClaw's secure-context console warning and avoid leaking tokens via proxy/CDN access logs. |
 | 1.6.7 | Rewrote the "Connect Google" OAuth instructions to match Google's current Auth Platform UI (the old "+ Create Credentials" → "OAuth client ID" menu was replaced by a single "+ Create client" button). Prose-with-arrows replaced by explicit numbered substeps with exact field names + recommended values. Concrete values (App name, Client name) get inline copy buttons that fall back to `document.execCommand('copy')` because the wizard runs over HTTP (no secure-context `navigator.clipboard`). OAuth deep links point to the new `/auth/overview` and `/auth/clients` URLs. |
-| 1.6.8 | **Fix gog keyring auth failure on the wizard side — `GOG_KEYRING_PASSWORD` was set on `openclaw-gateway.service` but missing from the setup-wizard's `.env`, so `gog auth credentials` invoked by the wizard hit "no TTY available for keyring file backend password prompt". Now propagated to both services. Also: replaced the "open the file in TextEdit and paste it" textarea on the Connect-Google step with a real file dropzone (drag-and-drop + click-to-browse) with client-side JSON validation. The textarea is still available behind an "Advanced: paste JSON manually" toggle.** ← current |
+| 1.6.8 | Fix gog keyring auth failure on the wizard side — `GOG_KEYRING_PASSWORD` was set on `openclaw-gateway.service` but missing from the setup-wizard's `.env`, so `gog auth credentials` invoked by the wizard hit "no TTY available for keyring file backend password prompt". Now propagated to both services. Also: replaced the "open the file in TextEdit and paste it" textarea on the Connect-Google step with a real file dropzone (drag-and-drop + click-to-browse) with client-side JSON validation. The textarea is still available behind an "Advanced: paste JSON manually" toggle. |
+| 1.6.9 | **Replace the figlet "OpenClaw" ASCII banner at the top of deploy.sh with a clean centered title — `Easy OpenClaw Deploy by Ilias` with `· GCP Deploy ·` as a dim subscript below. The original ASCII was ambiguous block-shapes on first glance; the new banner says what it is in legible text.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
