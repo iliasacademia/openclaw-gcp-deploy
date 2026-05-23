@@ -531,6 +531,29 @@ input[type="text"].error  { border-color: var(--red); }
 }
 .g-detail em { color: var(--text); font-style: normal; font-weight: 500; }
 .g-detail strong { color: var(--text); }
+.g-detail ol, .g-detail ul { margin: 8px 0; padding-left: 22px; }
+.g-detail > ol > li { margin: 10px 0; }
+.g-detail ul li { margin: 3px 0; }
+.g-detail code { background: var(--bg); padding: 1px 6px; border-radius: 4px; font-size: 0.85em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.g-detail .post-wizard { margin-top: 12px; padding: 10px 12px; background: var(--bg); border-left: 3px solid var(--accent); border-radius: 4px; }
+
+.copyable { display: inline-flex; align-items: center; gap: 4px; vertical-align: baseline; }
+.copyable code { display: inline-block; }
+.copy-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-family: inherit;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: background 0.1s, color 0.1s;
+}
+.copy-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+.copy-btn.copied { background: #16a34a; color: white; border-color: #16a34a; }
 
 .g-steps textarea {
   width: 100%;

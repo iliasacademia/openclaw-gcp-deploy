@@ -507,18 +507,55 @@ async function saveGoogleCredentials() {
 }
 
 // Deep links into the user's own GCP project for the OAuth consent screen +
-// credentials pages. Called whenever we know the project id.
+// clients pages. Called whenever we know the project id.
+// Google replaced the old /apis/credentials URLs with /auth/* under their
+// new "Google Auth Platform" UI. The old URLs still redirect for now but
+// point at the canonical new locations directly.
 function setOauthLinks(projectId) {
   if (!projectId) return;
   const set = (id, url) => {
     const el = document.getElementById(id);
     if (el) el.href = url;
   };
-  set('oauth-consent-link',    `https://console.cloud.google.com/apis/credentials/consent?project=${encodeURIComponent(projectId)}`);
-  set('oauth-credentials-link', `https://console.cloud.google.com/apis/credentials?project=${encodeURIComponent(projectId)}`);
-  set('g-consent-link',         `https://console.cloud.google.com/apis/credentials/consent?project=${encodeURIComponent(projectId)}`);
-  set('g-credentials-link',     `https://console.cloud.google.com/apis/credentials/oauthclient?project=${encodeURIComponent(projectId)}`);
+  set('oauth-consent-link',    `https://console.cloud.google.com/auth/overview?project=${encodeURIComponent(projectId)}`);
+  set('oauth-credentials-link', `https://console.cloud.google.com/auth/clients?project=${encodeURIComponent(projectId)}`);
+  set('g-consent-link',         `https://console.cloud.google.com/auth/overview?project=${encodeURIComponent(projectId)}`);
+  set('g-credentials-link',     `https://console.cloud.google.com/auth/clients?project=${encodeURIComponent(projectId)}`);
 }
+
+// Copy the text from the <code> element immediately before this button to
+// the clipboard. Falls back to document.execCommand because the wizard runs
+// over HTTP at the VM's external IP, which excludes it from the secure
+// context required by navigator.clipboard.writeText in modern browsers.
+async function copyMe(button) {
+  const code = button.parentElement.querySelector('code');
+  if (!code) return;
+  const text = code.textContent;
+  let ok = false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    }
+  } catch { /* fall through to execCommand */ }
+  if (!ok) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { ok = document.execCommand('copy'); } catch { /* ignore */ }
+    document.body.removeChild(ta);
+  }
+  if (ok) {
+    const orig = button.textContent;
+    button.textContent = '✓ copied';
+    button.classList.add('copied');
+    setTimeout(() => { button.textContent = orig; button.classList.remove('copied'); }, 1500);
+  }
+}
+window.copyMe = copyMe;
 
 // ── Diagnostics ──────────────────────────────────────────────────────────────
 function showDiagnostics(ev) {

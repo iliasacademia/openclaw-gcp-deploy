@@ -211,35 +211,77 @@
 
         <ol class="g-steps">
           <li>
-            <strong>Configure the OAuth consent screen</strong> (one-time).
+            <strong>Configure the OAuth consent screen</strong> (one-time, ~30 seconds).
             <a id="g-consent-link" href="#" target="_blank" class="btn btn-link">
               Open in a new tab →
             </a>
             <div class="g-detail">
-              On the page that opens: choose <em>External</em> → click Create →
-              fill <em>App name</em> (any name, e.g. "My OpenClaw") and
-              <em>User support email</em> → click Save and Continue → click
-              Save and Continue again on Scopes → on Test users click
-              <em>Add Users</em> and add your own Google account → Save.
+              A Google wizard opens with four sections. Fill each one exactly like this:
+              <ol>
+                <li>
+                  <strong>App Information</strong>
+                  <ul>
+                    <li><strong>App name</strong>: <span class="copyable"><code>My OpenClaw</code><button class="copy-btn" onclick="copyMe(this)" title="Copy">copy</button></span> (any name works)</li>
+                    <li><strong>User support email</strong>: pick your own Google account from the dropdown — the same one you're signed in as</li>
+                    <li>Click <strong>Next</strong></li>
+                  </ul>
+                </li>
+                <li>
+                  <strong>Audience</strong>
+                  <ul>
+                    <li>Select <strong>External</strong></li>
+                    <li>Click <strong>Next</strong></li>
+                  </ul>
+                </li>
+                <li>
+                  <strong>Contact Information</strong>
+                  <ul>
+                    <li><strong>Email addresses</strong>: your own Google account email (the same one as above — this is where Google contacts you about your OAuth app)</li>
+                    <li>Click <strong>Next</strong></li>
+                  </ul>
+                </li>
+                <li>
+                  <strong>Finish</strong>
+                  <ul>
+                    <li>Tick the agreement checkbox</li>
+                    <li>Click <strong>Continue</strong></li>
+                  </ul>
+                </li>
+              </ol>
+              <div class="post-wizard">
+                <strong>One more step Google doesn't include in the wizard:</strong>
+                <ul>
+                  <li>In the left sidebar of the Google Auth Platform page, click <strong>Audience</strong></li>
+                  <li>Scroll to the <strong>Test users</strong> section and click <strong>+ Add users</strong></li>
+                  <li>Enter your own Google account email → click <strong>Save</strong></li>
+                </ul>
+                Without this, OAuth approval later will fail with an "access blocked" error.
+              </div>
             </div>
           </li>
           <li>
-            <strong>Create an OAuth client</strong>.
+            <strong>Create an OAuth client</strong> (~20 seconds).
             <a id="g-credentials-link" href="#" target="_blank" class="btn btn-link">
-              Open Credentials page →
+              Open Clients page →
             </a>
             <div class="g-detail">
-              Click <em>+ Create Credentials</em> → <em>OAuth client ID</em> →
-              Application type <strong>Desktop app</strong> → give it any
-              name → Create. A dialog will appear — click
-              <em>Download JSON</em> and save the file.
+              <ul>
+                <li>Click <strong>+ Create client</strong> (the blue button at the top of the Clients page)</li>
+                <li><strong>Application type</strong>: select <strong>Desktop app</strong> from the dropdown</li>
+                <li><strong>Name</strong>: <span class="copyable"><code>My OpenClaw Client</code><button class="copy-btn" onclick="copyMe(this)" title="Copy">copy</button></span> (any name works)</li>
+                <li>Click <strong>Create</strong></li>
+                <li>A dialog appears with the Client ID and Client Secret — click <strong>Download JSON</strong> and save the file to your computer</li>
+              </ul>
             </div>
           </li>
           <li>
             <strong>Paste the JSON below</strong>.
             <div class="g-detail">
-              Open the downloaded file in any text editor (TextEdit, Notepad,
-              VS Code…), select all, copy, and paste it here:
+              <ul>
+                <li>Open the downloaded <code>client_secret_*.json</code> file in any text editor (TextEdit, Notepad, VS Code…)</li>
+                <li>Select all (<strong>⌘+A</strong> on Mac, <strong>Ctrl+A</strong> on Windows), copy</li>
+                <li>Paste into the box below, then click <strong>Save credentials</strong></li>
+              </ul>
             </div>
             <textarea id="g-json" rows="6" placeholder='{"installed":{"client_id":"...","client_secret":"...","auth_uri":"https://accounts.google.com/o/oauth2/auth",...}}'></textarea>
             <button id="g-save" class="btn btn-primary btn-large" onclick="saveGoogleCredentials()">
