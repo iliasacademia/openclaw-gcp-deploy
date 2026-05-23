@@ -426,9 +426,9 @@ async function pollDashboardReady() {
   // progress, not frozen.
   const waitMsg = document.getElementById('dashboard-wait-msg');
   if (waitMsg && readyPollCount === 10) {
-    waitMsg.innerHTML = 'Still waiting on Let\'s Encrypt — sometimes this takes a minute or two.<br/><span class="dim">(You can chat with your bot on Telegram right now while this finishes.)</span>';
+    waitMsg.innerHTML = 'Still waiting on Let\'s Encrypt — sometimes this takes a minute or two.<br/><span class="dim">(Your bot is connected to Telegram independently — you can try sending it a message while this finishes.)</span>';
   } else if (waitMsg && readyPollCount === 30) {
-    waitMsg.innerHTML = 'Letting Let\'s Encrypt retry — almost there…<br/><span class="dim">(Your bot is fully working on Telegram independent of the dashboard.)</span>';
+    waitMsg.innerHTML = 'Letting Let\'s Encrypt retry — almost there…<br/><span class="dim">(The Telegram bot path doesn\'t depend on this cert; the dashboard does.)</span>';
   }
   readyPollTimer = setTimeout(pollDashboardReady, 3000);
 }

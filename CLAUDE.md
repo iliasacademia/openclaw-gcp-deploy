@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.9` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.10` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -197,6 +197,21 @@ In rough order of how confusing they were when first encountered:
     `openclaw pairing approve <channel> <code>`. Discovered the hard
     way via wizard diagnostics in v1.6.4 — initial parser guessed three
     different key names, all wrong.
+
+2c. **The `google-vertex` provider requires `type: "authorized_user"` ADC.**
+    The implementation at `dist/vertex-adc--LQQpRFG.js::hasGoogleVertexAuthorizedUserAdcSync`
+    reads `$HOME/.config/gcloud/application_default_credentials.json` and
+    rejects anything that isn't `type: "authorized_user"`. **It does NOT
+    honor the GCE metadata-server service-account credentials** that the
+    VM gets automatically from `--service-account` and `--scopes=cloud-platform`
+    on `gcloud compute instances create`. So our VM SA is enough to enable
+    Vertex APIs, list models, etc., but **not** to invoke the model from
+    OpenClaw. Workaround (v1.6.10+): user runs `gcloud auth
+    application-default login` in Cloud Shell, we ship the resulting file
+    via `--metadata-from-file=gcp-adc=…` and `startup.sh` installs it at
+    `/home/openclaw/.config/gcloud/application_default_credentials.json`.
+    If OpenClaw ever supports service-account ADC or metadata-server creds
+    in the google-vertex provider, we can drop the interactive step.
 
 3. **`gateway.controlUi.allowedOrigins` is mandatory** for any
    non-loopback access. Lists exact origins (no wildcards). Ours is
@@ -396,7 +411,8 @@ Recent versions:
 | 1.6.6 | Stop showing "Gateway failed" badge during the install window — systemd's `inactive` state on a not-yet-created unit was being conflated with a real failure. Only systemd's explicit `failed` state should trigger that badge; everything else is "Starting…". Caught by Playwright E2E. Also: dashboard URL token moved to URL fragment (`#token=`) instead of query string (`?token=`) to stop OpenClaw's secure-context console warning and avoid leaking tokens via proxy/CDN access logs. |
 | 1.6.7 | Rewrote the "Connect Google" OAuth instructions to match Google's current Auth Platform UI (the old "+ Create Credentials" → "OAuth client ID" menu was replaced by a single "+ Create client" button). Prose-with-arrows replaced by explicit numbered substeps with exact field names + recommended values. Concrete values (App name, Client name) get inline copy buttons that fall back to `document.execCommand('copy')` because the wizard runs over HTTP (no secure-context `navigator.clipboard`). OAuth deep links point to the new `/auth/overview` and `/auth/clients` URLs. |
 | 1.6.8 | Fix gog keyring auth failure on the wizard side — `GOG_KEYRING_PASSWORD` was set on `openclaw-gateway.service` but missing from the setup-wizard's `.env`, so `gog auth credentials` invoked by the wizard hit "no TTY available for keyring file backend password prompt". Now propagated to both services. Also: replaced the "open the file in TextEdit and paste it" textarea on the Connect-Google step with a real file dropzone (drag-and-drop + click-to-browse) with client-side JSON validation. The textarea is still available behind an "Advanced: paste JSON manually" toggle. |
-| 1.6.9 | **Replace the figlet "OpenClaw" ASCII banner at the top of deploy.sh with a clean centered title — `Easy OpenClaw Deploy by Ilias` with `· GCP Deploy ·` as a dim subscript below. The original ASCII was ambiguous block-shapes on first glance; the new banner says what it is in legible text.** ← current |
+| 1.6.9 | Replace the figlet "OpenClaw" ASCII banner at the top of deploy.sh with a clean centered title — `Easy OpenClaw Deploy by Ilias` with `· GCP Deploy ·` as a dim subscript below. The original ASCII was ambiguous block-shapes on first glance; the new banner says what it is in legible text. |
+| 1.6.10 | **Fix the actual bot-doesn't-reply blocker. OpenClaw 2026.5.20's google-vertex provider requires `application_default_credentials.json` with `type: "authorized_user"` — it doesn't honor the VM's GCE metadata-server service-account creds. deploy.sh now runs `gcloud auth application-default login` (interactive, one-time per Cloud Shell user) if no ADC file exists, then ships the file via `--metadata-from-file=gcp-adc=…`. startup.sh stages the payload, validates it's `authorized_user` type, and installs it at `/home/openclaw/.config/gcloud/application_default_credentials.json` after the openclaw user is created. Without this, every Vertex call returns "No API key found for provider google-vertex". Also softened the misleading "You can now chat" wording on the Done screen — first reply takes a few seconds, and the cert wait copy no longer over-promises.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.

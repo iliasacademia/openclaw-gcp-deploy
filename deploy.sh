@@ -130,6 +130,46 @@ fi
 success "Billing account: ${DIM}${BILLING_ACCOUNT}${NC}"
 success "Repo: ${DIM}${REPO_URL}${NC}"
 
+# ── Prerequisite: Google Cloud Application Default Credentials ───────────────
+# OpenClaw 2026.5.20+ requires the google-vertex provider to find an ADC
+# file with type=authorized_user. The GCE metadata-server credentials (what
+# the VM's service account provides automatically) don't satisfy that check
+# — only the JSON file produced by `gcloud auth application-default login`
+# does. So we make sure that file exists on the user's Cloud Shell, then
+# ship it to the VM via metadata.
+ADC_FILE="${CLOUDSDK_CONFIG:-$HOME/.config/gcloud}/application_default_credentials.json"
+
+if [ ! -f "$ADC_FILE" ]; then
+  echo ""
+  log "Setting up Google Cloud credentials for Vertex AI (one-time, ~30 seconds)..."
+  log "${DIM}OpenClaw needs your Google account's credentials to call Gemini through Vertex AI.${NC}"
+  log "${DIM}This is separate from the Cloud Shell login and only has to be done once per user.${NC}"
+  echo ""
+  log "${BOLD}Follow the prompts:${NC} a URL will be printed; open it in a browser tab where"
+  log "you're already signed in as your Google account, approve the request, and paste the"
+  log "verification code back here."
+  echo ""
+  gcloud auth application-default login --no-launch-browser \
+    || die "gcloud auth application-default login failed. Re-run this script and complete the flow."
+  echo ""
+fi
+
+[ -f "$ADC_FILE" ] || die "Application Default Credentials file is still missing at ${ADC_FILE}. Re-run."
+
+# Validate it's an authorized_user file (the only type OpenClaw's google-vertex
+# provider accepts). gcloud sometimes also writes external_account or impersonated
+# types; reject those with a clear error rather than letting the deploy succeed
+# and the bot silently fail later.
+ADC_TYPE=$(python3 -c "import json,sys; print(json.load(open('$ADC_FILE')).get('type','unknown'))" 2>/dev/null || echo parse_error)
+if [ "$ADC_TYPE" != "authorized_user" ]; then
+  die "ADC file at ${ADC_FILE} has type='${ADC_TYPE}', but OpenClaw needs 'authorized_user'.\n\n  Fix: run\n    gcloud auth application-default login\n  then re-run this script."
+fi
+
+# We pass the file as-is via --metadata-from-file (cleaner than base64ing it
+# through --metadata, since metadata-from-file handles binary/multiline
+# values and gcloud parses them server-side).
+success "Application Default Credentials: ${DIM}${ADC_FILE}${NC}"
+
 # ── Single-use tokens ────────────────────────────────────────────────────────
 # Two distinct tokens: SETUP_TOKEN gates the setup wizard, GATEWAY_TOKEN gates
 # the OpenClaw dashboard. Generated here so we can print URLs at the end.
@@ -263,7 +303,7 @@ for z in "${ZONES[@]}"; do
         --service-account="$VM_SA" \
         --scopes="cloud-platform" \
         --metadata="repo-url=${REPO_URL},setup-token=${SETUP_TOKEN},gateway-token=${GATEWAY_TOKEN},gog-keyring=${GOG_KEYRING_PASSWORD}" \
-        --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh" \
+        --metadata-from-file="startup-script=${SCRIPT_DIR}/startup.sh,gcp-adc=${ADC_FILE}" \
         --quiet; then
     ZONE="$z"
     rm -f "$WITH_SPINNER_LOG"

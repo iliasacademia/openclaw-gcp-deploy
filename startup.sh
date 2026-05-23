@@ -51,6 +51,28 @@ SSLIP_DOMAIN="${VM_IP_DASHED}.sslip.io"
 echo "PROJECT_ID=${PROJECT_ID}  REGION=${REGION}  ZONE=${ZONE}  VM_IP=${VM_IP}"
 echo "REPO_URL=${REPO_URL}"
 
+# ── Stage Google Cloud ADC payload from metadata ─────────────────────────────
+# deploy.sh ships the user's `~/.config/gcloud/application_default_credentials.json`
+# as VM metadata under the `gcp-adc` key. OpenClaw's google-vertex provider
+# reads this file (via `$HOME/.config/gcloud/...`) and requires
+# `type: "authorized_user"`. The GCE service-account credentials don't
+# satisfy that check, hence this dance.
+#
+# We stage to /tmp here (before the openclaw user even exists). The file is
+# moved into /home/openclaw/.config/gcloud/ after the user is created below.
+ADC_STAGING=/tmp/openclaw-adc-staging.json
+if md "instance/attributes/gcp-adc" > "$ADC_STAGING" 2>/dev/null && [ -s "$ADC_STAGING" ]; then
+  chmod 600 "$ADC_STAGING"
+  if grep -q '"type"[[:space:]]*:[[:space:]]*"authorized_user"' "$ADC_STAGING"; then
+    echo "ADC payload staged: type=authorized_user (good)"
+  else
+    echo "WARN: staged ADC payload is not type=authorized_user — Vertex AI calls will fail"
+  fi
+else
+  echo "WARN: gcp-adc metadata not present or empty — Vertex AI calls will fail"
+  rm -f "$ADC_STAGING"
+fi
+
 # Retry an apt-get install several times — transient mirror failures are
 # common enough that one shot isn't safe.
 apt_install() {
@@ -88,6 +110,19 @@ echo "--- Creating openclaw user ---"
 if ! id openclaw >/dev/null 2>&1; then
   useradd -r -m -d /home/openclaw -s /bin/bash openclaw \
     || fail "useradd openclaw failed"
+fi
+
+# Install the staged ADC payload into the openclaw user's gcloud config dir,
+# where OpenClaw's google-vertex provider looks for it. Without this, every
+# Vertex call returns "No API key found for provider google-vertex".
+if [ -s "$ADC_STAGING" ]; then
+  mkdir -p /home/openclaw/.config/gcloud
+  mv "$ADC_STAGING" /home/openclaw/.config/gcloud/application_default_credentials.json
+  chown -R openclaw:openclaw /home/openclaw/.config
+  chmod 600 /home/openclaw/.config/gcloud/application_default_credentials.json
+  echo "ADC installed at /home/openclaw/.config/gcloud/application_default_credentials.json"
+else
+  echo "WARN: no ADC payload staged — Vertex AI auth will fail"
 fi
 
 # Grant journal read access so the setup wizard's diagnostics endpoint can
