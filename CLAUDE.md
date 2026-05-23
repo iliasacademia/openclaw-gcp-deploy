@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.11` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.12` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -413,7 +413,8 @@ Recent versions:
 | 1.6.8 | Fix gog keyring auth failure on the wizard side — `GOG_KEYRING_PASSWORD` was set on `openclaw-gateway.service` but missing from the setup-wizard's `.env`, so `gog auth credentials` invoked by the wizard hit "no TTY available for keyring file backend password prompt". Now propagated to both services. Also: replaced the "open the file in TextEdit and paste it" textarea on the Connect-Google step with a real file dropzone (drag-and-drop + click-to-browse) with client-side JSON validation. The textarea is still available behind an "Advanced: paste JSON manually" toggle. |
 | 1.6.9 | Replace the figlet "OpenClaw" ASCII banner at the top of deploy.sh with a clean centered title — `Easy OpenClaw Deploy by Ilias` with `· GCP Deploy ·` as a dim subscript below. The original ASCII was ambiguous block-shapes on first glance; the new banner says what it is in legible text. |
 | 1.6.10 | Fix the actual bot-doesn't-reply blocker. OpenClaw 2026.5.20's google-vertex provider requires `application_default_credentials.json` with `type: "authorized_user"` — it doesn't honor the VM's GCE metadata-server service-account creds. deploy.sh now runs `gcloud auth application-default login` (interactive, one-time per Cloud Shell user) if no ADC file exists, then ships the file via `--metadata-from-file=gcp-adc=…`. startup.sh stages the payload, validates it's `authorized_user` type, and installs it at `/home/openclaw/.config/gcloud/application_default_credentials.json` after the openclaw user is created. Without this, every Vertex call returns "No API key found for provider google-vertex". Also softened the misleading "You can now chat" wording on the Done screen — first reply takes a few seconds, and the cert wait copy no longer over-promises. |
-| 1.6.11 | **Suppress the gcloud "you're on GCE, why use personal account?" warning + Y/n prompt during the ADC step. Cloud Shell IS a GCE VM so the warning fires, but we're deliberately opting in to user-OAuth ADC because OpenClaw needs it. Detect GCE via metadata server, auto-feed "y" via process substitution, and `grep -v` the eight warning lines out of gcloud's stdout so a non-technical user only sees a clean URL + code prompt.** ← current |
+| 1.6.11 | Suppress the gcloud "you're on GCE, why use personal account?" warning + Y/n prompt during the ADC step. Cloud Shell IS a GCE VM so the warning fires, but we're deliberately opting in to user-OAuth ADC because OpenClaw needs it. Detect GCE via metadata server, auto-feed "y" via process substitution, and `grep -v` the eight warning lines out of gcloud's stdout so a non-technical user only sees a clean URL + code prompt. |
+| 1.6.12 | **Connect Google Step 1 instructions now mention the "Get started" button. Google's OAuth Platform page first lands the user on a "not configured yet" overview that requires clicking a blue Get started button before the 4-step wizard opens. We were jumping straight to "fill the App Information section" without acknowledging that gate.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
