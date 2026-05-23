@@ -145,12 +145,26 @@ if [ ! -f "$ADC_FILE" ]; then
   log "${DIM}OpenClaw needs your Google account's credentials to call Gemini through Vertex AI.${NC}"
   log "${DIM}This is separate from the Cloud Shell login and only has to be done once per user.${NC}"
   echo ""
-  log "${BOLD}Follow the prompts:${NC} a URL will be printed; open it in a browser tab where"
-  log "you're already signed in as your Google account, approve the request, and paste the"
-  log "verification code back here."
+  log "${BOLD}Open the URL below in your browser, sign in, click Allow,${NC}"
+  log "${BOLD}and paste the verification code back here.${NC}"
   echo ""
-  gcloud auth application-default login --no-launch-browser \
-    || die "gcloud auth application-default login failed. Re-run this script and complete the flow."
+
+  # Cloud Shell IS a GCE VM, so `gcloud auth application-default login`
+  # prints a multi-line "you're on GCE, use the SA instead" warning + Y/n
+  # prompt. We're knowingly opting in to user-OAuth ADC (because OpenClaw
+  # requires it), so silently auto-accept the prompt with "y" and strip the
+  # warning from gcloud's output so the user sees a clean URL + code flow.
+  if curl -sf -m 2 -H "Metadata-Flavor: Google" \
+       http://metadata.google.internal/computeMetadata/v1/ > /dev/null 2>&1; then
+    { printf "y\n"; exec cat </dev/tty; } | \
+      gcloud auth application-default login --no-launch-browser 2>&1 | \
+      grep --line-buffered -vE \
+        "Compute Engine virtual machine|service credentials associated|automatically be used by Application|necessary to use this command|If you decide to proceed|user credentials may be visible|authenticate with your personal account|Are you sure you want" \
+      || die "gcloud auth application-default login failed. Re-run this script and complete the flow."
+  else
+    gcloud auth application-default login --no-launch-browser \
+      || die "gcloud auth application-default login failed. Re-run this script and complete the flow."
+  fi
   echo ""
 fi
 
