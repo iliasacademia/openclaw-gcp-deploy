@@ -466,6 +466,75 @@ app.post('/api/gog/credentials', requireToken, (req, res) => {
   res.json({ success: true, gogConfigured: true });
 });
 
+// gog's two-step server-side OAuth flow:
+//   Step 1: print the Google OAuth URL (we capture and return it to the wizard).
+//   User: opens URL, signs in, approves, gets redirected to a localhost URL
+//         that fails to load (expected) — copies the URL from address bar.
+//   Step 2: pass the pasted redirect URL back; gog exchanges the embedded code
+//         for a refresh token and stores it in its keyring.
+//
+// This replaces the previous "go to the dashboard → Skills → gog → Authorise"
+// instruction, because that dashboard control doesn't exist in the current
+// OpenClaw build — only an Enabled toggle.
+const GOG_SERVICES = 'gmail,calendar,drive,contacts,docs,sheets';
+
+app.post('/api/gog/start-auth', requireToken, (req, res) => {
+  const email = (req.body?.email || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+
+  // Step 1 prints the OAuth URL to stdout and exits. We capture and return it.
+  // The `--no-input` flag tells gog never to prompt interactively (since we're
+  // driving it from a parent process, not a TTY).
+  const cmd = `env HOME=/home/openclaw gog auth add ${email} --services ${GOG_SERVICES} --remote --step 1 --no-input 2>&1`;
+  const r = safeExec(cmd, 15000);
+  if (!r.ok) {
+    logEvent('error', 'gog_start_auth_failed', { email, err: r.err, out: (r.out || '').slice(0, 500) });
+    return res.status(500).json({ error: 'Could not start Google sign-in: ' + ((r.out || r.err || 'unknown').slice(0, 400)) });
+  }
+
+  const urlMatch = (r.out || '').match(/https:\/\/accounts\.google\.com\/[^\s'"<>]+/);
+  if (!urlMatch) {
+    logEvent('warn', 'gog_start_auth_no_url', { sample: (r.out || '').slice(0, 400) });
+    return res.status(500).json({
+      error: 'gog did not produce an OAuth URL. Raw output: ' + (r.out || '').slice(0, 400),
+    });
+  }
+
+  logEvent('info', 'gog_start_auth', { email });
+  res.json({ url: urlMatch[0], email });
+});
+
+app.post('/api/gog/complete-auth', requireToken, (req, res) => {
+  const email   = (req.body?.email   || '').trim().toLowerCase();
+  const authUrl = (req.body?.authUrl || '').trim();
+
+  if (!email || !authUrl) {
+    return res.status(400).json({ error: 'Email and the pasted redirect URL are both required.' });
+  }
+  if (!/[?&]code=/.test(authUrl)) {
+    return res.status(400).json({
+      error: 'That URL doesn\'t look like a Google OAuth redirect — it should contain `code=...` in the query string. Copy the URL from the address bar AFTER you click Allow on the Google page (the page will fail to load — that\'s expected).',
+    });
+  }
+
+  // Step 2 takes the redirect URL via --auth-url and exchanges the embedded
+  // code for a refresh token. Quote the URL with JSON.stringify so the shell
+  // doesn't interpret special chars from the query string.
+  const cmd = `env HOME=/home/openclaw gog auth add ${email} --services ${GOG_SERVICES} --remote --step 2 --auth-url ${JSON.stringify(authUrl)} --no-input 2>&1`;
+  const r = safeExec(cmd, 30000);
+  if (!r.ok) {
+    logEvent('error', 'gog_complete_auth_failed', { email, err: r.err, out: (r.out || '').slice(0, 500) });
+    return res.status(400).json({
+      error: 'Sign-in failed: ' + ((r.out || r.err || 'unknown').slice(0, 400)),
+    });
+  }
+
+  logEvent('info', 'gog_complete_auth', { email });
+  res.json({ success: true });
+});
+
 // Save Telegram bot token.
 app.post('/api/telegram', requireToken, async (req, res) => {
   const token = (req.body?.token || '').trim();

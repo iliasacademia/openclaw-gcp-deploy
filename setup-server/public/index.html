@@ -313,14 +313,59 @@
           <p class="hint">Saving your Google credentials…</p>
         </div>
 
+        <!-- Step 4: collect the user's email so gog can build an OAuth URL for them -->
+        <div id="g-auth-email" class="g-auth-state hidden">
+          <h2>Sign in to your Google account</h2>
+          <p class="subtitle">
+            OpenClaw needs your Google account's permission to read Gmail,
+            search Drive, and manage Calendar. Use the same Google account
+            you added as a <strong>Test User</strong> in Step 1.
+          </p>
+          <div class="field-group">
+            <label for="g-email">Your Google email</label>
+            <input id="g-email" type="email" placeholder="you@gmail.com" autocomplete="email" spellcheck="false" />
+            <p id="g-email-error" class="field-error hidden"></p>
+          </div>
+          <button id="g-start-auth" class="btn btn-primary btn-large" onclick="gogStartAuth()">
+            Get sign-in link →
+          </button>
+        </div>
+
+        <!-- Step 5: show the OAuth URL + collect the redirect URL the user lands on -->
+        <div id="g-auth-link" class="g-auth-state hidden">
+          <h2>Sign in to Google</h2>
+          <ol class="g-auth-flow">
+            <li>Click the blue button below — Google opens in a new tab.</li>
+            <li>Sign in with the Google account you entered, then click <strong>Allow</strong>.</li>
+            <li>Google then redirects you to a page that <strong>won't load</strong> — that's expected. The address bar shows a URL like <code>http://localhost:8080/?code=...</code>.</li>
+            <li>Copy that URL from your browser's address bar and paste it below.</li>
+          </ol>
+          <a id="g-auth-url" href="#" target="_blank" rel="noopener" class="btn btn-primary btn-large">
+            Open Google sign-in →
+          </a>
+          <div class="field-group">
+            <label for="g-auth-url-input">Paste the redirect URL here</label>
+            <input id="g-auth-url-input" type="text" placeholder="http://localhost:8080/?code=4/0A..." autocomplete="off" spellcheck="false" />
+            <p id="g-auth-url-error" class="field-error hidden"></p>
+          </div>
+          <button id="g-complete-auth" class="btn btn-primary btn-large" onclick="gogCompleteAuth()">
+            Complete sign-in →
+          </button>
+        </div>
+
+        <!-- Step 6: spinner while gog exchanges the code -->
+        <div id="g-auth-saving" class="pairing-state hidden">
+          <div class="spinner spinner-small"></div>
+          <p class="hint">Verifying your Google sign-in…</p>
+        </div>
+
+        <!-- Step 7: final success -->
         <div id="g-saved" class="g-saved hidden">
           <div class="done-icon">✅</div>
-          <h2>Credentials saved!</h2>
+          <h2>Google account connected!</h2>
           <p class="subtitle">
-            Last step: in the OpenClaw dashboard, open
-            <strong>Skills → gog → Authorise</strong>. A Google page will
-            open — sign in with the account you added as a Test user above
-            and approve the requested scopes.
+            OpenClaw can now read your Gmail, search your Drive, and manage
+            your Calendar. Try asking your bot to "read my last 5 emails".
           </p>
           <a id="g-open-dashboard" href="#" target="_blank" class="btn btn-primary btn-large">
             Open OpenClaw Dashboard →

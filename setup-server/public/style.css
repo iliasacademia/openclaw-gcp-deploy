@@ -610,6 +610,33 @@ input[type="text"].error  { border-color: var(--red); }
 .g-advanced[open] summary { color: var(--text); margin-bottom: 6px; }
 .g-advanced textarea { margin-top: 6px; }
 
+.g-auth-state { padding: 18px 18px; }
+.g-auth-state h2 { margin: 0 0 8px; font-size: 1.3rem; }
+.g-auth-state .field-group { margin-top: 14px; }
+.g-auth-state input[type="email"],
+.g-auth-state input[type="text"] {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86rem;
+  margin-top: 4px;
+}
+.g-auth-state input:focus { outline: none; border-color: var(--accent); }
+.g-auth-state .btn-large { margin-top: 14px; }
+.g-auth-flow {
+  margin: 12px 0 18px 0;
+  padding-left: 22px;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.g-auth-flow li { margin: 6px 0; }
+.g-auth-flow code, .g-auth-flow strong { color: var(--text); }
+
 .g-steps textarea {
   width: 100%;
   min-height: 120px;

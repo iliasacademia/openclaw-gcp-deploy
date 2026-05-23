@@ -440,6 +440,9 @@ function enterGoogleScreen(ev) {
   setOauthLinks(cachedProjectId);
   document.getElementById('g-saved').classList.add('hidden');
   document.getElementById('g-saving').classList.add('hidden');
+  document.getElementById('g-auth-email')?.classList.add('hidden');
+  document.getElementById('g-auth-link')?.classList.add('hidden');
+  document.getElementById('g-auth-saving')?.classList.add('hidden');
   const err = document.getElementById('g-error');
   if (err) err.classList.add('hidden');
   const ta = document.getElementById('g-json');
@@ -450,6 +453,9 @@ function enterGoogleScreen(ev) {
     btn.disabled = false;
     btn.textContent = 'Save credentials →';
   }
+  const stepsEl = document.querySelector('#screen-google .g-steps');
+  if (stepsEl) stepsEl.style.opacity = '';
+  gogAuthEmail = null;
 }
 
 function exitGoogleScreen(ev) {
@@ -582,11 +588,12 @@ async function saveGoogleCredentials() {
       return;
     }
 
-    // Success — flip to the "now go to the dashboard" panel.
-    document.getElementById('g-saved').classList.remove('hidden');
-    // Hide the input form so it's clear that step is done.
+    // Success — fade the 3-step instructions and advance to the email step.
+    document.getElementById('g-auth-email').classList.remove('hidden');
     const stepsEl = document.querySelector('#screen-google .g-steps');
     if (stepsEl) stepsEl.style.opacity = '0.4';
+    // Focus the email input so the user knows what to do next.
+    setTimeout(() => { document.getElementById('g-email')?.focus(); }, 50);
 
   } catch (e) {
     document.getElementById('g-saving').classList.add('hidden');
@@ -594,6 +601,102 @@ async function saveGoogleCredentials() {
     err.classList.remove('hidden');
     btn.disabled    = false;
     btn.textContent = 'Save credentials →';
+  }
+}
+
+// ── gog: drive the two-step OAuth flow inside the wizard ────────────────────
+// Replaces the previous "go to the dashboard → Skills → gog → Authorise"
+// instruction, which depended on a dashboard control that doesn't actually
+// exist in OpenClaw 2026.5.20.
+let gogAuthEmail = null;
+
+async function gogStartAuth() {
+  const inp    = document.getElementById('g-email');
+  const errEl  = document.getElementById('g-email-error');
+  const btn    = document.getElementById('g-start-auth');
+
+  errEl.classList.add('hidden');
+  const email = (inp?.value || '').trim().toLowerCase();
+  if (!email) {
+    errEl.textContent = 'Please enter your Google email.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Getting link…';
+
+  try {
+    const res = await api('/api/gog/start-auth', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email }),
+    });
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      errEl.textContent = data.error || 'Could not start Google sign-in.';
+      errEl.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Get sign-in link →';
+      return;
+    }
+
+    gogAuthEmail = data.email;
+    document.getElementById('g-auth-email').classList.add('hidden');
+    document.getElementById('g-auth-url').href = data.url;
+    document.getElementById('g-auth-link').classList.remove('hidden');
+    setTimeout(() => { document.getElementById('g-auth-url-input')?.focus(); }, 50);
+  } catch (e) {
+    errEl.textContent = 'Network error: ' + e.message;
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Get sign-in link →';
+  }
+}
+
+async function gogCompleteAuth() {
+  const inp   = document.getElementById('g-auth-url-input');
+  const errEl = document.getElementById('g-auth-url-error');
+  const btn   = document.getElementById('g-complete-auth');
+
+  errEl.classList.add('hidden');
+  const authUrl = (inp?.value || '').trim();
+  if (!authUrl) {
+    errEl.textContent = 'Please paste the redirect URL from your browser.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+  document.getElementById('g-auth-saving').classList.remove('hidden');
+
+  try {
+    const res = await api('/api/gog/complete-auth', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email: gogAuthEmail, authUrl }),
+    });
+    const data = await res.json();
+    document.getElementById('g-auth-saving').classList.add('hidden');
+
+    if (!res.ok || data.error) {
+      errEl.textContent = data.error || 'Sign-in failed.';
+      errEl.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Complete sign-in →';
+      return;
+    }
+
+    document.getElementById('g-auth-link').classList.add('hidden');
+    document.getElementById('g-saved').classList.remove('hidden');
+  } catch (e) {
+    document.getElementById('g-auth-saving').classList.add('hidden');
+    errEl.textContent = 'Network error: ' + e.message;
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Complete sign-in →';
   }
 }
 
