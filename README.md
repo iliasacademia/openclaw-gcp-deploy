@@ -34,6 +34,8 @@ Cloud Shell will show you two Google dialogs before you reach the terminal — t
 1. **"Trust repo"** — check the box and click **Confirm**. (Google's security gate for every Cloud Shell deploy button; can't be bypassed.)
 2. **"Authorize Cloud Shell"** — click **Authorize**. (Lets Cloud Shell use your Google credentials to make API calls. This is required for `gcloud` to work; you may also see it pop up again later in the session.)
 
+> 💡 **If the Cloud Shell terminal doesn't appear** within ~30 seconds — common on a fresh Google account where Cloud Shell may interrupt the flow to confirm your identity or settings — just **click the "Open in Cloud Shell" button again**. It will pick up where you left off. Repeat if needed.
+
 Then click into the terminal at the bottom of Cloud Shell and type:
 
 ```bash

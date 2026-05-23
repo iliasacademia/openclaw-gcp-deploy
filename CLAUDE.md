@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.20` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.21` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -422,7 +422,8 @@ Recent versions:
 | 1.6.17 | Flag the 2-Step Verification requirement BEFORE the user hits it. Google blocks OAuth client creation for accounts without 2SV, but we were silent about it until the user was already deep into Connect Google. Now mentioned in three places: README Prerequisites (new bullet #2 with deep link to enable 2SV), Telegram step of the wizard (yellow heads-up card priming the user for what's coming), and the top of Connect Google itself (prerequisite callout right before Step 1). New `.heads-up` CSS class for the callouts. |
 | 1.6.18 | README Deploy section now also documents the "Authorize Cloud Shell" dialog that pops up alongside (or shortly after) the "Trust repo" dialog. Users were confused by the second dialog because we only documented the first. Both are now listed as expected dialogs to click through before reaching the terminal. |
 | 1.6.19 | README Prerequisites gains a fourth bullet: a Telegram account (with link to install Telegram). We assumed everyone had Telegram and made the wizard's Step 1 invent a bot via @BotFather without ever calling out that prerequisite up front. |
-| 1.6.20 | **Stop abbreviating "two-step verification" as "2SV" in the README. The abbreviation was confusing to readers who aren't already familiar with the term. Spell it out in full. Wizard HTML already used the Google-branded form "2-Step Verification" as link text only, no abbreviation, so no changes there.** ← current |
+| 1.6.20 | Stop abbreviating "two-step verification" as "2SV" in the README. The abbreviation was confusing to readers who aren't already familiar with the term. Spell it out in full. Wizard HTML already used the Google-branded form "2-Step Verification" as link text only, no abbreviation, so no changes there. |
+| 1.6.21 | **Fix the ADC step dying with `gcloud auth application-default login failed` even though gcloud actually succeeded. Root cause: `{ printf "y\n"; exec cat </dev/tty; }` keeps reading after gcloud exits; its next write to the closed pipe triggers SIGPIPE; `set -o pipefail` propagates that as pipeline failure. Now disable pipefail around just that pipeline and check gcloud's true exit via `PIPESTATUS[1]`. Also adds "Do you want to continue" to the warning-line grep filter (gcloud changed the prompt wording from "Are you sure you want"). Banner simplified to one line "Easy OpenClaw Deployment" (dropped the "by Ilias" + "GCP Deploy" subscript). README adds a callout: if Cloud Shell doesn't load the terminal in ~30s (common on fresh accounts where it interrupts for an identity-confirmation step), click the deploy button again.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.

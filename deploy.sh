@@ -99,8 +99,7 @@ clear
 echo ""
 echo -e "  ${BLUE}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "  ${BLUE}${BOLD}║${NC}                                                              ${BLUE}${BOLD}║${NC}"
-echo -e "  ${BLUE}${BOLD}║${NC}                ${BOLD}Easy OpenClaw Deploy by Ilias${NC}                 ${BLUE}${BOLD}║${NC}"
-echo -e "  ${BLUE}${BOLD}║${NC}                        ${DIM}· GCP Deploy ·${NC}                        ${BLUE}${BOLD}║${NC}"
+echo -e "  ${BLUE}${BOLD}║${NC}                  ${BOLD}Easy OpenClaw Deployment${NC}                    ${BLUE}${BOLD}║${NC}"
 echo -e "  ${BLUE}${BOLD}║${NC}                                                              ${BLUE}${BOLD}║${NC}"
 echo -e "  ${BLUE}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -154,13 +153,26 @@ if [ ! -f "$ADC_FILE" ]; then
   # prompt. We're knowingly opting in to user-OAuth ADC (because OpenClaw
   # requires it), so silently auto-accept the prompt with "y" and strip the
   # warning from gcloud's output so the user sees a clean URL + code flow.
+  #
+  # Tricky bit: `cat </dev/tty` keeps reading from the terminal even after
+  # gcloud has consumed the verification code and exited. Its next write to
+  # the (now-closed) pipe triggers SIGPIPE, and `set -o pipefail` propagates
+  # that as a pipeline failure even though gcloud actually succeeded. So we
+  # locally disable pipefail and read gcloud's true exit code from
+  # PIPESTATUS instead of the overall pipe exit. Also include "Do you want
+  # to continue" in the grep filter — recent gcloud versions changed the
+  # prompt wording from "Are you sure you want" to that.
   if curl -sf -m 2 -H "Metadata-Flavor: Google" \
        http://metadata.google.internal/computeMetadata/v1/ > /dev/null 2>&1; then
+    set +o pipefail
     { printf "y\n"; exec cat </dev/tty; } | \
       gcloud auth application-default login --no-launch-browser 2>&1 | \
       grep --line-buffered -vE \
-        "Compute Engine virtual machine|service credentials associated|automatically be used by Application|necessary to use this command|If you decide to proceed|user credentials may be visible|authenticate with your personal account|Are you sure you want" \
-      || die "gcloud auth application-default login failed. Re-run this script and complete the flow."
+        "Compute Engine virtual machine|service credentials associated|automatically be used by Application|necessary to use this command|If you decide to proceed|user credentials may be visible|authenticate with your personal account|Are you sure you want|Do you want to continue"
+    GCLOUD_EXIT=${PIPESTATUS[1]}
+    set -o pipefail
+    [ "$GCLOUD_EXIT" -eq 0 ] \
+      || die "gcloud auth application-default login failed (exit ${GCLOUD_EXIT}). Re-run this script and complete the flow."
   else
     gcloud auth application-default login --no-launch-browser \
       || die "gcloud auth application-default login failed. Re-run this script and complete the flow."
