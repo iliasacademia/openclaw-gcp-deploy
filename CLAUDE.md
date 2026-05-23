@@ -401,6 +401,48 @@ Recent versions:
 Browse the full commit history with `git log --oneline` from the repo
 root.
 
+### Tags and rollback
+
+Every published version is tagged in git (`v1.6.0` … `v1.6.9` etc.) so
+you can pin or roll back without hunting for commit hashes.
+
+**To deploy a specific older version** (e.g. v1.6.6 after a regression):
+
+```bash
+git clone https://github.com/iliasacademia/openclaw-gcp-deploy /tmp/ocd
+cd /tmp/ocd
+git checkout v1.6.6      # detached HEAD on that tag
+bash deploy.sh           # uses startup.sh from this checkout
+```
+
+This works because `deploy.sh` reads `startup.sh` from `$SCRIPT_DIR`
+(its own directory). But note: the running VM also `git clone`s the
+repo at first boot — currently from `main`, so a long-running VM would
+self-update on restart. If you need a VM pinned to a tag, either patch
+`startup.sh`'s `git clone` to add `--branch v1.6.6` or hot-pin the VM:
+
+```bash
+gcloud compute ssh openclaw-vm --project=<id> --zone=<zone> --command='
+  cd /opt/openclaw-deploy &&
+  sudo -u openclaw git fetch --tags &&
+  sudo -u openclaw git checkout v1.6.6 &&
+  sudo systemctl restart openclaw-setup openclaw-gateway'
+```
+
+**To find which version a deployed VM is running**, hit
+`/api/diagnostics?token=<setup-token>` — the response has a
+`setupServerVersion` field.
+
+**To revert main itself** (rare — usually pin a deploy instead):
+
+```bash
+git revert <bad-commit-hash>   # creates a new "undo" commit
+git push origin main
+```
+
+Avoid force-pushing or rewriting history on `main`; revert commits are
+auditable and easier to reason about.
+
 ---
 
 ## 11. Things a new chatbot session should know
