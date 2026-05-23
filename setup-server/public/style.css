@@ -273,7 +273,7 @@ input[type="text"].error  { border-color: var(--red); }
   color: var(--text-muted);
 }
 .next-steps li::before {
-  content: '›';
+  content: '•';
   position: absolute;
   left: 0;
   color: var(--accent);

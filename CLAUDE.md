@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.14` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.15` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -416,7 +416,8 @@ Recent versions:
 | 1.6.11 | Suppress the gcloud "you're on GCE, why use personal account?" warning + Y/n prompt during the ADC step. Cloud Shell IS a GCE VM so the warning fires, but we're deliberately opting in to user-OAuth ADC because OpenClaw needs it. Detect GCE via metadata server, auto-feed "y" via process substitution, and `grep -v` the eight warning lines out of gcloud's stdout so a non-technical user only sees a clean URL + code prompt. |
 | 1.6.12 | Connect Google Step 1 instructions now mention the "Get started" button. Google's OAuth Platform page first lands the user on a "not configured yet" overview that requires clicking a blue Get started button before the 4-step wizard opens. We were jumping straight to "fill the App Information section" without acknowledging that gate. |
 | 1.6.13 | Remove the stray dot at the top of Connect Google Step 3. The body started with `<strong>Upload the JSON file</strong>.` and the CSS for `.g-steps > li > strong` makes the strong a block, which pushed the literal period onto its own line. |
-| 1.6.14 | **Drive the `gog auth add` OAuth flow inside the wizard. The "Last step: dashboard → Skills → gog → Authorise" instruction we'd been telling users was wrong — OpenClaw 2026.5.20's dashboard skill page only has an Enabled toggle, no Authorise button. Built a new two-step UI after "Credentials saved": (1) email input → POST `/api/gog/start-auth` which runs `gog auth add <email> --remote --step 1 --no-input` to capture the Google OAuth URL → wizard shows URL with "Open Google sign-in" button + input field; (2) user signs in, gets redirected to a localhost URL that won't load, copies that URL from the address bar, pastes it back → POST `/api/gog/complete-auth` which runs `gog auth add --remote --step 2 --auth-url <pasted-url>` to exchange the code for a refresh token. Validates the pasted URL contains `code=` before invoking gog so we give a targeted error if the user pastes the wrong thing.** ← current |
+| 1.6.14 | Drive the `gog auth add` OAuth flow inside the wizard. The "Last step: dashboard → Skills → gog → Authorise" instruction we'd been telling users was wrong — OpenClaw 2026.5.20's dashboard skill page only has an Enabled toggle, no Authorise button. Built a new two-step UI after "Credentials saved": (1) email input → POST `/api/gog/start-auth` which runs `gog auth add <email> --remote --step 1 --no-input` to capture the Google OAuth URL → wizard shows URL with "Open Google sign-in" button + input field; (2) user signs in, gets redirected to a localhost URL that won't load, copies that URL from the address bar, pastes it back → POST `/api/gog/complete-auth` which runs `gog auth add --remote --step 2 --auth-url <pasted-url>` to exchange the code for a refresh token. Validates the pasted URL contains `code=` before invoking gog so we give a targeted error if the user pastes the wrong thing. |
+| 1.6.15 | **Better copy on "Optional next steps" — chevron (›) bullets looked like clickable expanders, replaced with real dot bullets (•). Also expanded the Connect-Google value-prop both on the Done screen tile and the Sign-in step: spelled out concretely that the agent can write research notes/meeting recaps into new Docs and Sheets, not just abstract "file/email/calendar superpowers".** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
