@@ -17,6 +17,7 @@ Deploy [OpenClaw](https://openclaw.ai) on Google Cloud in ~5 minutes with a sing
 3. **A Google Cloud account with free trial activated** — [start here](https://console.cloud.google.com/freetrial)
    - You get **$300 in free credits** valid for 90 days
    - A credit card is required to verify identity — you won't be charged
+4. **A Telegram account** — [install Telegram](https://telegram.org/) on your phone or desktop and sign in. The wizard walks you through creating a private bot through Telegram's `@BotFather` once the deploy finishes; you'll talk to your assistant through that bot.
 
 That's it. Everything else is automated.
 
