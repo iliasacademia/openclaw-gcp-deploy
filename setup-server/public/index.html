@@ -342,23 +342,62 @@
         <!-- Step 5: show the OAuth URL + collect the redirect URL the user lands on -->
         <div id="g-auth-link" class="g-auth-state hidden">
           <h2>Sign in to Google</h2>
-          <ol class="g-auth-flow">
-            <li>Click the blue button below — Google opens in a new tab.</li>
-            <li>Sign in with the Google account you entered, then click <strong>Allow</strong>.</li>
-            <li>Google then redirects you to a page that <strong>won't load</strong> — that's expected. The address bar shows a URL like <code>http://localhost:8080/?code=...</code>.</li>
-            <li>Copy that URL from your browser's address bar and paste it below.</li>
-          </ol>
-          <a id="g-auth-url" href="#" target="_blank" rel="noopener" class="btn btn-primary btn-large">
-            Open Google sign-in →
-          </a>
-          <div class="field-group">
-            <label for="g-auth-url-input">Paste the redirect URL here</label>
-            <input id="g-auth-url-input" type="text" placeholder="http://localhost:8080/?code=4/0A..." autocomplete="off" spellcheck="false" />
-            <p id="g-auth-url-error" class="field-error hidden"></p>
+
+          <!-- 1) Action first: open the sign-in page -->
+          <div class="g-auth-block">
+            <p class="g-auth-block-label">Step 1 — open the sign-in page</p>
+            <a id="g-auth-url" href="#" target="_blank" rel="noopener" class="btn btn-primary btn-large">
+              Open Google sign-in →
+            </a>
+            <p class="hint">Google opens in a new browser tab. Come back here once you're done.</p>
           </div>
-          <button id="g-complete-auth" class="btn btn-primary btn-large" onclick="gogCompleteAuth()">
-            Complete sign-in →
-          </button>
+
+          <!-- 2) Walk through Google's actual screens -->
+          <div class="g-auth-block">
+            <p class="g-auth-block-label">Step 2 — click through Google's screens</p>
+            <p class="hint">In the new tab, you'll see three Google pages in a row. Click through each:</p>
+            <ol class="g-auth-flow">
+              <li>
+                <strong>"Google hasn't verified this app"</strong> → click <strong>Continue</strong>.
+                <span class="dim">(You're the developer of the OAuth client you just created, so this warning is expected. It only appears because your app is in Testing mode.)</span>
+              </li>
+              <li>
+                <strong>"Sign in to My OpenClaw"</strong> → confirm your email is shown, then click <strong>Continue</strong>.
+              </li>
+              <li>
+                <strong>"My OpenClaw wants access to your Google Account"</strong> → tick the <strong>Select all</strong> checkbox at the top so all scopes are granted, then click <strong>Continue</strong>.
+              </li>
+            </ol>
+          </div>
+
+          <!-- 3) Tell the user about the "can't be reached" page -->
+          <div class="g-auth-block">
+            <p class="g-auth-block-label">Step 3 — copy the URL from the error page</p>
+            <p class="hint">
+              After you click Continue on the third page, Google tries to send you to
+              <code>http://localhost:...</code> on the device you're using. Since nothing's
+              listening on that port, your browser shows
+              <strong>"This site can't be reached"</strong> — <em>that's expected</em>.
+            </p>
+            <p class="hint">
+              Look at the address bar. The URL looks like:
+              <br/>
+              <code class="g-auth-example">http://localhost:41043/oauth2/callback?state=…&amp;code=4/0A…</code>
+            </p>
+            <p class="hint"><strong>Copy that entire URL.</strong></p>
+          </div>
+
+          <!-- 4) Paste + submit -->
+          <div class="g-auth-block">
+            <p class="g-auth-block-label">Step 4 — paste it here</p>
+            <div class="field-group">
+              <input id="g-auth-url-input" type="text" placeholder="http://localhost:41043/oauth2/callback?…&code=4/0A…" autocomplete="off" spellcheck="false" />
+              <p id="g-auth-url-error" class="field-error hidden"></p>
+            </div>
+            <button id="g-complete-auth" class="btn btn-primary btn-large" onclick="gogCompleteAuth()">
+              Complete sign-in →
+            </button>
+          </div>
         </div>
 
         <!-- Step 6: spinner while gog exchanges the code -->
