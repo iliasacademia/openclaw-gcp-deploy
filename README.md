@@ -28,7 +28,10 @@ Click the button below. It opens Google Cloud Shell (a browser-based terminal) w
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/iliasacademia/openclaw-gcp-deploy&cloudshell_print=cloudshell_banner.txt&shellonly=true)
 
-You'll see a **"Trust repo"** dialog first — check the box and click **Confirm**. (This is Google's security gate for every Cloud Shell deploy button; it can't be bypassed.)
+Cloud Shell will show you two Google dialogs before you reach the terminal — these are normal:
+
+1. **"Trust repo"** — check the box and click **Confirm**. (Google's security gate for every Cloud Shell deploy button; can't be bypassed.)
+2. **"Authorize Cloud Shell"** — click **Authorize**. (Lets Cloud Shell use your Google credentials to make API calls. This is required for `gcloud` to work; you may also see it pop up again later in the session.)
 
 Then click into the terminal at the bottom of Cloud Shell and type:
 
