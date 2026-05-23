@@ -144,36 +144,61 @@ if [ ! -f "$ADC_FILE" ]; then
   log "${DIM}OpenClaw needs your Google account's credentials to call Gemini through Vertex AI.${NC}"
   log "${DIM}This is separate from the Cloud Shell login and only has to be done once per user.${NC}"
   echo ""
-  log "${BOLD}Open the URL below in your browser, sign in, click Allow,${NC}"
-  log "${BOLD}and paste the verification code back here.${NC}"
-  echo ""
 
-  # Cloud Shell IS a GCE VM, so `gcloud auth application-default login`
-  # prints a multi-line "you're on GCE, use the SA instead" warning + Y/n
-  # prompt. We're knowingly opting in to user-OAuth ADC (because OpenClaw
-  # requires it), so silently auto-accept the prompt with "y" and strip the
-  # warning from gcloud's output so the user sees a clean URL + code flow.
+  # The previous approach piped `printf "y\n"; cat </dev/tty` into gcloud to
+  # auto-answer the GCE warning. Problem: cat reads from the terminal
+  # eagerly, so the user's verification-code paste was consumed BEFORE
+  # gcloud had even printed "Once finished, enter the verification code:".
+  # The prompt then appeared with no visible cursor (input was already
+  # in the pipe), the user thought it hadn't worked, pasted again, and
+  # the second paste hit a closed pipe.
   #
-  # Tricky bit: `cat </dev/tty` keeps reading from the terminal even after
-  # gcloud has consumed the verification code and exited. Its next write to
-  # the (now-closed) pipe triggers SIGPIPE, and `set -o pipefail` propagates
-  # that as a pipeline failure even though gcloud actually succeeded. So we
-  # locally disable pipefail and read gcloud's true exit code from
-  # PIPESTATUS instead of the overall pipe exit. Also include "Do you want
-  # to continue" in the grep filter — recent gcloud versions changed the
-  # prompt wording from "Are you sure you want" to that.
-  if curl -sf -m 2 -H "Metadata-Flavor: Google" \
-       http://metadata.google.internal/computeMetadata/v1/ > /dev/null 2>&1; then
-    set +o pipefail
-    { printf "y\n"; exec cat </dev/tty; } | \
-      gcloud auth application-default login --no-launch-browser 2>&1 | \
-      grep --line-buffered -vE \
-        "Compute Engine virtual machine|service credentials associated|automatically be used by Application|necessary to use this command|If you decide to proceed|user credentials may be visible|authenticate with your personal account|Are you sure you want|Do you want to continue"
-    GCLOUD_EXIT=${PIPESTATUS[1]}
-    set -o pipefail
-    [ "$GCLOUD_EXIT" -eq 0 ] \
-      || die "gcloud auth application-default login failed (exit ${GCLOUD_EXIT}). Re-run this script and complete the flow."
+  # Use `expect` instead so we can wait for gcloud's "Once finished" prompt
+  # *first*, then ask the user for the code with a labeled prompt. expect
+  # is pre-installed on Cloud Shell; we fall back to the plain gcloud flow
+  # if it isn't.
+  if command -v expect >/dev/null 2>&1; then
+    ADC_TCL=$(mktemp -t adc-XXXXXX.tcl 2>/dev/null || mktemp)
+    # Pass expect the script via a file so its `expect_user` reads from the
+    # real terminal (heredoc-as-stdin would have it read from the heredoc).
+    cat > "$ADC_TCL" <<'TCL'
+set timeout 600
+log_user 0
+spawn gcloud auth application-default login --no-launch-browser
+expect {
+  -re "Do you want to continue" { send "y\r"; exp_continue }
+  -re {https://accounts\.google\.com/[^ \r\n]+} {
+    send_user "\n  ▸ Step 1 — open this URL in your browser, sign in, click Allow:\n\n"
+    send_user "    $expect_out(0,string)\n\n"
+    send_user "  ▸ Step 2 — Google then shows a verification code. Copy it.\n\n"
+    exp_continue
+  }
+  "Once finished, enter the verification code" {
+    expect ":"
+    send_user "  ▸ Paste verification code here and press Enter:\n  "
+    expect_user -re "(.*)\n"
+    send "[string trim $expect_out(1,string)]\r"
+    exp_continue
+  }
+  -re "Credentials saved to file" {
+    send_user "\n  ✓ Credentials saved.\n"
+    exp_continue
+  }
+  eof
+}
+catch wait result
+exit [lindex $result 3]
+TCL
+    expect "$ADC_TCL"
+    ADC_RC=$?
+    rm -f "$ADC_TCL"
+    [ "$ADC_RC" -eq 0 ] \
+      || die "gcloud auth application-default login failed (exit ${ADC_RC}). Re-run this script and complete the flow."
   else
+    # Fallback for environments without expect — works but the UX is rougher
+    # (gcloud's GCE warning + inline prompt; no labeled paste prompt).
+    log "${YELLOW}Note:${NC} 'expect' isn't installed. Wait for the gcloud prompt before pasting."
+    echo ""
     gcloud auth application-default login --no-launch-browser \
       || die "gcloud auth application-default login failed. Re-run this script and complete the flow."
   fi
