@@ -670,6 +670,22 @@ input[type="text"].error  { border-color: var(--red); }
   color: var(--text);
 }
 
+/* Heads-up / prerequisite callout — pulls the reader's eye toward something
+   they need to do BEFORE they get stuck on a downstream Google screen. */
+.heads-up {
+  margin: 16px 0 20px;
+  padding: 12px 14px;
+  background: rgba(251, 191, 36, 0.08);
+  border-left: 3px solid #fbbf24;
+  border-radius: 4px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.heads-up strong { color: #fbbf24; }
+.heads-up a { color: var(--accent); }
+.heads-up a:hover { text-decoration: underline; }
+
 .g-steps textarea {
   width: 100%;
   min-height: 120px;
