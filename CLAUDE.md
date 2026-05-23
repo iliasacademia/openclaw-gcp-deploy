@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.22` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.23` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -424,7 +424,8 @@ Recent versions:
 | 1.6.19 | README Prerequisites gains a fourth bullet: a Telegram account (with link to install Telegram). We assumed everyone had Telegram and made the wizard's Step 1 invent a bot via @BotFather without ever calling out that prerequisite up front. |
 | 1.6.20 | Stop abbreviating "two-step verification" as "2SV" in the README. The abbreviation was confusing to readers who aren't already familiar with the term. Spell it out in full. Wizard HTML already used the Google-branded form "2-Step Verification" as link text only, no abbreviation, so no changes there. |
 | 1.6.21 | Fix the ADC step dying with `gcloud auth application-default login failed` even though gcloud actually succeeded. Root cause: `{ printf "y\n"; exec cat </dev/tty; }` keeps reading after gcloud exits; its next write to the closed pipe triggers SIGPIPE; `set -o pipefail` propagates that as pipeline failure. Now disable pipefail around just that pipeline and check gcloud's true exit via `PIPESTATUS[1]`. Also adds "Do you want to continue" to the warning-line grep filter. Banner simplified to one line "Easy OpenClaw Deployment". README adds a callout about re-clicking the deploy button if Cloud Shell stalls. |
-| 1.6.22 | **Replace the printf+cat hack for ADC auth with an `expect` script. The old hack consumed the user's verification-code paste BEFORE gcloud printed its "Once finished, enter the verification code:" prompt — so the prompt appeared with no visible cursor (paste already in the pipe), the user thought it failed, pasted again, and the second paste hit a closed pipe. With `expect`, we wait for gcloud's prompt FIRST, then ask the user with a labeled "▸ Paste verification code here and press Enter:" prompt. expect is pre-installed on Cloud Shell; fallback to direct gcloud if not.** ← current |
+| 1.6.22 | Replace the printf+cat hack for ADC auth with an `expect` script. The old hack consumed the user's verification-code paste BEFORE gcloud printed its "Once finished, enter the verification code:" prompt — so the prompt appeared with no visible cursor (paste already in the pipe), the user thought it failed, pasted again, and the second paste hit a closed pipe. With `expect`, we wait for gcloud's prompt FIRST, then ask the user with a labeled "▸ Paste verification code here and press Enter:" prompt. |
+| 1.6.23 | **Add a "Use a different bot" link to the pairing screen footer, next to "Already paired earlier? Skip to dashboard". The restartTelegram path already existed but was only reachable after the 3-minute timeout. Now visible from the start, for the case where a Telegram bot token is in use by an older OpenClaw VM that's still polling — the new claw never sees `/start` because the old one grabs it first.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
