@@ -1,6 +1,6 @@
 {
   "name": "openclaw-setup-server",
-  "version": "1.6.30",
+  "version": "1.6.31",
   "description": "Setup wizard for OpenClaw GCP deployment",
   "main": "server.js",
   "scripts": {

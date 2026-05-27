@@ -7,9 +7,35 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.30` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.31` · **Last reviewed:** 2026-05-27
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
+
+---
+
+## 0. Current state (snapshot)
+
+- **Status: working end-to-end.** A fresh deploy from the GitHub button
+  produces a usable assistant: GCP project + VM + Caddy HTTPS dashboard +
+  Telegram bot, replying via Vertex AI Gemini.
+- **Model chain:** primary `google-vertex/gemini-3.1-pro-preview`, fallbacks
+  `gemini-2.5-pro` → `gemini-2.5-flash` (region `global`). Best model when
+  Vertex's preview pool has capacity; GA 2.5 models (dedicated quota) when it
+  doesn't — so the "All models rate-limited" failure is gone. (§5 2e)
+- **Validated live** by the test deployer (account `antonvkharlamov` /
+  `evanowbaxter` test runs): bot replies reliably; both 2.5-pro-primary and
+  3.1-pro-primary-with-fallback were tried and both gave good replies. Chose
+  the 3.1-primary chain as the default.
+- **Recent saga (all fixed, see version table + gotchas 2d/2e):** the
+  rate-limit errors were three stacked causes — (1) ADC missing
+  `quota_project_id`, (2) no model fallback configured, (3) the Pro *preview*
+  model sharing a throttled Vertex capacity pool. Fixed across v1.6.27-1.6.30.
+- **Biggest remaining rough edges:** Google OAuth (gog) still needs a few
+  manual Console clicks; Caddy cert acquisition has no in-wizard fallback if
+  Let's Encrypt fails; VM external IP changing (stop/start) would break the
+  sslip.io cert. See §9.
+- **Test loop:** `bash test.sh` (26 checks, ~5s, no GCP). End-to-end requires
+  a real deploy from the button.
 
 ---
 
@@ -302,11 +328,14 @@ In rough order of how confusing they were when first encountered:
    $HOME**. To make openclaw look in `/home/openclaw/.openclaw/openclaw.json`,
    pass `env HOME=/home/openclaw` explicitly.
 
-6. **Default model: primary `google-vertex/gemini-3.1-pro-preview`, fallbacks `gemini-2.5-pro` then `gemini-2.5-flash`** (best model when free, GA fallback)
-   as of v1.6.29, fallback `gemini-2.5-flash`, region `global`. We previously
-   used `gemini-3.1-pro-preview` but it's preview-only with shared quota and
-   throttled in practice (see 2e). `gemini-2.5-pro`/`gemini-2.5-flash` have no
-   normalization alias, so OpenClaw sends them to Vertex unchanged.
+6. **Default model chain (v1.6.30): primary `google-vertex/gemini-3.1-pro-preview`,
+   fallbacks `gemini-2.5-pro` then `gemini-2.5-flash`; region `global`.**
+   3.1 Pro is the strongest model but preview-only / shared-quota, so it
+   throttles (see 2e); the GA 2.5 models have dedicated quota and always
+   answer, so they're the reliability floor. All three pass through to Vertex
+   unchanged (no normalization alias). Model id (`agents.defaults.model.primary`)
+   uses the `provider/model` form. When Google promotes a Gemini 3.x to GA,
+   make it primary and the throttling concern goes away.
 
 7. **NodeSource setup_24.x DOES work on Debian 13.** Their repo uses
    a `Suites: nodistro` suite so distro detection is bypassed. We
@@ -525,7 +554,8 @@ Recent versions:
 | 1.6.27 | Fix "All models rate-limited" on first message: force `quota_project_id` onto the shipped authorized_user ADC (startup.sh jq-injects it; gateway unit also sets `GOOGLE_CLOUD_QUOTA_PROJECT`). Root cause was a missing quota project, not the $300 credit. See gotcha 2d. |
 | 1.6.28 | Add Flash fallbacks (`gemini-3.1-flash-preview`, `gemini-3.1-flash-lite-preview`) to `agents.defaults.model`. The Pro preview model shares a Vertex capacity pool across customers and returns intermittent 429 RESOURCE_EXHAUSTED even with quota_project set; with no fallback (`next=none` in model-fallback logs) OpenClaw surfaced the error. Now it transparently drops to Flash when Pro is throttled. See gotcha 2e.** |
 | 1.6.29 | **Switch default model to GA `gemini-2.5-pro` (+ `gemini-2.5-flash` fallback). Confirmed no GA Gemini 3.x exists on Vertex — it's all preview/shared-quota, the throttling source. 2.5 is GA with dedicated quota: reliable agentic brain. README + startup.sh updated. See gotcha 2e.** |
-| 1.6.30 | **Default model chain finalized after live testing: primary `gemini-3.1-pro-preview` → fallback `gemini-2.5-pro` → `gemini-2.5-flash`. Best model when Vertex's preview pool is free, GA models (dedicated quota) when it's throttled. README headline restored to 3.1 Pro w/ fallback note.** ← current |
+| 1.6.30 | **Default model chain finalized after live testing: primary `gemini-3.1-pro-preview` → fallback `gemini-2.5-pro` → `gemini-2.5-flash`. Best model when Vertex's preview pool is free, GA models (dedicated quota) when it's throttled. README headline restored to 3.1 Pro w/ fallback note.** |
+| 1.6.31 | **Docs: added a §0 "Current state (snapshot)" block; fixed a self-contradiction in gotcha #6 (header said 3.1-pro primary, body still said "we previously used 3.1-pro"); refreshed review date. No code change.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
