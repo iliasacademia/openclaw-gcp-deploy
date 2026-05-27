@@ -291,10 +291,9 @@ cat > /home/openclaw/.openclaw/openclaw.json << OCCONF
   "agents": {
     "defaults": {
       "model": {
-        "primary": "google-vertex/gemini-3.1-pro-preview",
+        "primary": "google-vertex/gemini-2.5-pro",
         "fallbacks": [
-          "google-vertex/gemini-3.1-flash-preview",
-          "google-vertex/gemini-3.1-flash-lite-preview"
+          "google-vertex/gemini-2.5-flash"
         ]
       }
     }
