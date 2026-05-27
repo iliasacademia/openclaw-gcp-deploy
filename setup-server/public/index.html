@@ -176,11 +176,11 @@
         </a>
         <div id="dashboard-timeout" class="alert hidden">
           <strong>The secure dashboard is taking longer than usual.</strong>
-          <p>You can either wait, retry, or open the dashboard over plain HTTP
-            (your browser will show a "device identity" warning — that's
-            expected; the dashboard needs a few more clicks to work over HTTP).</p>
-          <button class="btn btn-secondary" onclick="retryDashboardPoll()">Try HTTPS again</button>
-          <a id="dashboard-http-link" href="#" target="_blank" class="btn btn-link">Open over HTTP anyway →</a>
+          <p>The button above should still work — the security certificate is
+            usually ready by now. If the page shows a certificate warning,
+            wait another minute and refresh. Your Telegram bot already works
+            regardless.</p>
+          <button class="btn btn-secondary" onclick="retryDashboardPoll()">Check again</button>
           <a href="#" onclick="showDiagnostics(event)" class="btn btn-link">Show diagnostics</a>
         </div>
 
@@ -227,6 +227,12 @@
           <strong>Prerequisite:</strong> the Google account you'll use here must have
           <a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener">2-Step Verification</a>
           enabled. Google blocks OAuth client creation for accounts without it. If yours doesn't, enable it before Step 2 below.
+        </div>
+
+        <div class="heads-up">
+          <strong>Tip:</strong> if you juggle multiple Google accounts, do this in a Chrome
+          window signed into the account you deployed with. The links below then open as the
+          right account automatically — no "wrong account" errors.
         </div>
 
         <ol class="g-steps">

@@ -4,6 +4,7 @@ const express      = require('express');
 const fs           = require('fs');
 const path         = require('path');
 const { execSync } = require('child_process');
+const { interpretGetMe } = require('./telegram');
 
 const PKG_VERSION = require('./package.json').version;
 
@@ -152,17 +153,12 @@ async function fetchBotInfo(token) {
     const r = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
       signal: AbortSignal.timeout(5000),
     });
-    const d = await r.json();
-    if (d.ok && d.result?.username) {
-      return { ok: true, username: d.result.username, firstName: d.result.first_name };
-    }
-    // Telegram returned a structured "not ok" — e.g., revoked token. This is
-    // a real config problem; the bot will never reply. Surface it.
-    return {
-      ok: false,
-      reason: 'unauthorized',
-      detail: d.description || 'Telegram rejected this bot token',
-    };
+    let d = null;
+    try { d = await r.json(); } catch { d = null; }
+    // interpretGetMe maps 401 → hard "unauthorized", everything else
+    // (429, 5xx, unparseable) → transient/soft so we don't reject a token
+    // the user typed correctly during a Telegram hiccup.
+    return interpretGetMe(r.status, d);
   } catch (err) {
     logEvent('warn', 'telegram_getme_network_failed', { err: err.message });
     return { ok: false, reason: 'network', networkFailure: true, detail: err.message };
@@ -171,7 +167,9 @@ async function fetchBotInfo(token) {
 
 // Where we cache the bot username so reloads / different browsers still
 // get the deep link. Tiny JSON file the wizard reads via /api/status.
-const BOT_INFO_CACHE = '/home/openclaw/.openclaw/.wizard-bot-info.json';
+// Kept in the setup-server's own dir (NOT ~/.openclaw) so OpenClaw's config
+// watcher never sees an unexpected file in its state directory.
+const BOT_INFO_CACHE = path.join(__dirname, '.wizard-bot-info.json');
 
 function saveBotInfo(info) {
   try {

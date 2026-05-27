@@ -27,6 +27,8 @@ Deploy [OpenClaw](https://openclaw.ai) on Google Cloud in ~5 minutes with a sing
 
 4. **A Telegram account** — [install Telegram](https://telegram.org/) on your phone or desktop and sign in. The wizard walks you through creating a private bot through Telegram's `@BotFather` once the deploy finishes; you'll talk to your assistant through that bot.
 
+5. **Strongly recommended: a dedicated Chrome profile signed into the new Google account.** In Chrome, click your avatar (top-right) → **Add** → sign in with the new account from step 1, and do the entire deploy from that profile's window. This keeps the new account separate from your everyday Gmail, so every link in this guide (Cloud Shell, the Cloud Console, the Google sign-in screens during the optional Google-services step) opens as the right account automatically — no "wrong account" errors or account-picker confusion. [How to add a Chrome profile](https://support.google.com/chrome/answer/2364824).
+
 That's it. Everything else is automated.
 
 ---

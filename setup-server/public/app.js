@@ -13,7 +13,7 @@ let readyPollTimer   = null;
 let readyPollCount   = 0;
 let currentPairingCode = null;
 let cachedProjectId    = null;
-let cachedHttpDashboardUrl = null;
+let cachedDashboardUrl = null;
 
 // Timeouts: after this many polls (each ~3s), show a fallback UI instead of
 // spinning forever. 60 × 3s = 3 min for pairing; 100 × 3s = 5 min for the
@@ -179,6 +179,7 @@ async function submitTelegram() {
 }
 
 function setDashboardLink(url) {
+  if (url) cachedDashboardUrl = url;
   const a = document.getElementById('dashboard-link');
   if (a && url) a.href = url;
   const a2 = document.getElementById('g-open-dashboard');
@@ -398,27 +399,48 @@ function retryDashboardPoll() {
 
 async function pollDashboardReady() {
   readyPollCount++;
-  try {
-    const res = await api('/api/dashboard-ready');
-    const d   = await res.json();
-    if (d.ready) {
+
+  // IMPORTANT: probe the HTTPS dashboard from the BROWSER, not the server.
+  // The setup-server runs on the VM, and a GCP VM cannot reach its own
+  // external IP (no hairpin NAT) — so a server-side check of the public
+  // sslip.io URL would fail forever even when the cert is fine. The user's
+  // browser, however, reaches sslip.io normally. A no-cors fetch resolves
+  // (opaque) once the TLS handshake succeeds and rejects while the cert is
+  // still being provisioned — exactly the signal we want.
+  const probeUrl = cachedDashboardUrl
+    ? (() => { try { return new URL(cachedDashboardUrl).origin + '/'; } catch { return null; } })()
+    : null;
+
+  if (probeUrl) {
+    try {
+      await fetch(probeUrl, { mode: 'no-cors', signal: AbortSignal.timeout(4000) });
+      // Resolved → cert is valid and Caddy answered. Show the button.
       document.getElementById('dashboard-not-ready').classList.add('hidden');
       document.getElementById('dashboard-timeout').classList.add('hidden');
       const link = document.getElementById('dashboard-link');
-      if (d.dashboardUrl) link.href = d.dashboardUrl;
+      if (cachedDashboardUrl) link.href = cachedDashboardUrl;
       link.classList.remove('hidden');
       return; // stop polling
+    } catch (_) {
+      // Cert not ready yet (or transient) — keep polling.
     }
-    if (d.httpDashboardUrl) cachedHttpDashboardUrl = d.httpDashboardUrl;
-  } catch (_) {
-    // Keep polling.
+  } else {
+    // We somehow don't have a dashboard URL — don't trap the user on a
+    // spinner; just show the button and let them try.
+    document.getElementById('dashboard-not-ready').classList.add('hidden');
+    document.getElementById('dashboard-link').classList.remove('hidden');
+    return;
   }
 
   if (readyPollCount >= READY_POLL_TIMEOUT_TICKS) {
-    // Surface the HTTP fallback so the user isn't blocked.
+    // Give up gracefully: show the button anyway (the cert is usually fine
+    // by now and a browser cert warning, if any, is recoverable) plus a
+    // diagnostics path. We do NOT offer a plain-HTTP link — the OpenClaw
+    // Control UI can't run over HTTP regardless of config.
     document.getElementById('dashboard-not-ready').classList.add('hidden');
-    const httpLink = document.getElementById('dashboard-http-link');
-    if (httpLink && cachedHttpDashboardUrl) httpLink.href = cachedHttpDashboardUrl;
+    const link = document.getElementById('dashboard-link');
+    if (cachedDashboardUrl) link.href = cachedDashboardUrl;
+    link.classList.remove('hidden');
     document.getElementById('dashboard-timeout').classList.remove('hidden');
     return;
   }
@@ -426,9 +448,9 @@ async function pollDashboardReady() {
   // progress, not frozen.
   const waitMsg = document.getElementById('dashboard-wait-msg');
   if (waitMsg && readyPollCount === 10) {
-    waitMsg.innerHTML = 'Still waiting on Let\'s Encrypt — sometimes this takes a minute or two.<br/><span class="dim">(Your bot is connected to Telegram independently — you can try sending it a message while this finishes.)</span>';
+    waitMsg.innerHTML = 'Still setting up the secure connection — sometimes this takes a minute or two.<br/><span class="dim">(Your bot already works on Telegram — try sending it a message while this finishes.)</span>';
   } else if (waitMsg && readyPollCount === 30) {
-    waitMsg.innerHTML = 'Letting Let\'s Encrypt retry — almost there…<br/><span class="dim">(The Telegram bot path doesn\'t depend on this cert; the dashboard does.)</span>';
+    waitMsg.innerHTML = 'Almost there — finishing the security certificate…<br/><span class="dim">(The Telegram bot doesn\'t depend on this; only the dashboard does.)</span>';
   }
   readyPollTimer = setTimeout(pollDashboardReady, 3000);
 }

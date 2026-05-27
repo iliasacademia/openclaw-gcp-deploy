@@ -41,8 +41,21 @@ for f in deploy.sh startup.sh cleanup.sh; do
 done
 
 echo -e "\n${BOLD}── JS syntax ────────────────────────────────────────${NC}"
-check "node --check setup-server/server.js"     node --check setup-server/server.js
-check "node --check setup-server/public/app.js" node --check setup-server/public/app.js
+check "node --check setup-server/server.js"      node --check setup-server/server.js
+check "node --check setup-server/public/app.js"  node --check setup-server/public/app.js
+check "node --check setup-server/telegram.js"    node --check setup-server/telegram.js
+
+echo -e "\n${BOLD}── Telegram getMe interpretation ────────────────────${NC}"
+# These exercise the real token-acceptance decision logic that the wizard's
+# SKIP_TELEGRAM_VERIFY=1 bypass would otherwise hide from the smoke tests.
+check "getMe 401 → hard reject (unauthorized)" \
+  node -e "const {interpretGetMe}=require('./setup-server/telegram'); const r=interpretGetMe(401,{ok:false,error_code:401,description:'Unauthorized'}); process.exit(r.ok===false && r.reason==='unauthorized' ? 0 : 1)"
+check "getMe 429 → soft (do NOT reject the token)" \
+  node -e "const {interpretGetMe}=require('./setup-server/telegram'); const r=interpretGetMe(429,{ok:false,error_code:429,description:'Too Many Requests'}); process.exit(r.ok===false && r.reason!=='unauthorized' ? 0 : 1)"
+check "getMe success → ok + username" \
+  node -e "const {interpretGetMe}=require('./setup-server/telegram'); const r=interpretGetMe(200,{ok:true,result:{username:'mybot',first_name:'My Bot'}}); process.exit(r.ok===true && r.username==='mybot' ? 0 : 1)"
+check "getMe unparseable body → soft (transient)" \
+  node -e "const {interpretGetMe}=require('./setup-server/telegram'); const r=interpretGetMe(503,null); process.exit(r.ok===false && r.reason!=='unauthorized' ? 0 : 1)"
 
 echo -e "\n${BOLD}── JSON files ───────────────────────────────────────${NC}"
 check "setup-server/package.json is valid JSON" \

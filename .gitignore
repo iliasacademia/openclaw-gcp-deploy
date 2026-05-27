@@ -4,3 +4,4 @@ setup-server/package-lock.json
 setup-server/.env
 .DS_Store
 *.log
+setup-server/.wizard-bot-info.json
