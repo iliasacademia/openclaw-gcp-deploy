@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.27` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.28` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -252,6 +252,24 @@ In rough order of how confusing they were when first encountered:
     `sudo jq '{type, quota_project_id}' /home/openclaw/.config/gcloud/application_default_credentials.json`
     — quota_project_id must equal the my-first-claw project.
 
+2e. **The Gemini 3.1 Pro PREVIEW model rate-limits intermittently via Vertex
+    "dynamic shared quota" — separate from, and on top of, the quota-project
+    issue (2d).** Preview Gemini models don't get dedicated per-project
+    capacity; they draw from a pool shared across all GCP customers, so you
+    get `429 RESOURCE_EXHAUSTED` during contention even with quota_project
+    correctly set and the $300 credit untouched. Confirmed in the wild
+    (v1.6.28): real gateway logs showed `model=gemini-3.1-pro-preview … 429
+    Resource exhausted` and crucially `model-fallback/decision … next=none`
+    — there was no fallback, so OpenClaw surfaced the error to the user.
+    Fix: `agents.defaults.model.fallbacks` now lists
+    `gemini-3.1-flash-preview` then `gemini-3.1-flash-lite-preview`. Flash
+    has far more headroom, so the agent transparently drops to it when Pro
+    is throttled and the user still gets a reply. This routes AROUND the
+    throttle; it does not raise Pro's limit (only provisioned throughput or
+    a quota-increase request would, neither viable on free trial). If a
+    deployer wants maximum reliability over peak quality, flip `primary` to
+    `gemini-3.1-flash-preview`.
+
 3. **`gateway.controlUi.allowedOrigins` is mandatory** for any
    non-loopback access. Lists exact origins (no wildcards). Ours is
    `[http://<ip>:18789, https://<dashed-ip>.sslip.io]`.
@@ -483,7 +501,8 @@ Recent versions:
 | 1.6.24 | Docs refresh after the v1.6.0-v1.6.23 functional work: README's "What you get" / "What the script does" / "After deploy" sections now describe the actual current flow (ADC step, in-wizard gog OAuth with paste-the-redirect-URL, the URL-fragment dashboard token). CLAUDE.md §1, §2 (flow diagram), and §9 (open work) updated — §9 stops claiming the wizard "directs the user to the OpenClaw dashboard's gog skill" since v1.6.14+ does the whole flow in our own UI. |
 | 1.6.25 | README Prerequisites rewritten to (1) recommend a NEW Google account explicitly — fresh trial eligibility, blank-slate playground, and isolated OAuth scopes from your personal account — and (2) make the Cloud Billing account terminology explicit instead of leaving it implicit in "free trial activated". |
 | 1.6.26 | **Self-review fixes: dashboard-readiness check moved from the VM (which can't reach its own external IP — GCP has no hairpin NAT, so the gate never passed) to a client-side browser probe; removed the broken "open over HTTP" fallback (Control UI can't run over HTTP); only Telegram getMe 401 hard-rejects a token (429/5xx now soft) via new testable telegram.js + 4 unit tests; bot-info cache moved out of ~/.openclaw; README + Google panel recommend a dedicated Chrome profile for the deploy account.** |
-| 1.6.27 | **Fix "All models rate-limited" on first message: force `quota_project_id` onto the shipped authorized_user ADC (startup.sh jq-injects it; gateway unit also sets `GOOGLE_CLOUD_QUOTA_PROJECT`). Root cause was a missing quota project, not the $300 credit. See gotcha 2d.** ← current |
+| 1.6.27 | Fix "All models rate-limited" on first message: force `quota_project_id` onto the shipped authorized_user ADC (startup.sh jq-injects it; gateway unit also sets `GOOGLE_CLOUD_QUOTA_PROJECT`). Root cause was a missing quota project, not the $300 credit. See gotcha 2d. |
+| 1.6.28 | **Add Flash fallbacks (`gemini-3.1-flash-preview`, `gemini-3.1-flash-lite-preview`) to `agents.defaults.model`. The Pro preview model shares a Vertex capacity pool across customers and returns intermittent 429 RESOURCE_EXHAUSTED even with quota_project set; with no fallback (`next=none` in model-fallback logs) OpenClaw surfaced the error. Now it transparently drops to Flash when Pro is throttled. See gotcha 2e.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.
