@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.26` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.27` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -237,6 +237,20 @@ In rough order of how confusing they were when first encountered:
     `/home/openclaw/.config/gcloud/application_default_credentials.json`.
     If OpenClaw ever supports service-account ADC or metadata-server creds
     in the google-vertex provider, we can drop the interactive step.
+
+2d. **`authorized_user` ADC MUST carry a `quota_project_id` or Vertex 429s
+    on the very first request.** `gcloud auth application-default login`
+    does NOT set one, and deploy.sh ships the file as-is, so the shipped
+    credential had no quota project — Vertex couldn't attribute per-minute
+    quota and returned `RESOURCE_EXHAUSTED` immediately (OpenClaw surfaces
+    this as "All models are temporarily rate-limited", which looks like a
+    usage cap but is really a missing-quota-project config error — the $300
+    credit is irrelevant). Fix (v1.6.27): startup.sh `jq`-injects
+    `quota_project_id = <project>` into the ADC after install, and the
+    gateway unit also sets `GOOGLE_CLOUD_QUOTA_PROJECT=<project>` as
+    belt-and-suspenders. To diagnose on a live VM:
+    `sudo jq '{type, quota_project_id}' /home/openclaw/.config/gcloud/application_default_credentials.json`
+    — quota_project_id must equal the my-first-claw project.
 
 3. **`gateway.controlUi.allowedOrigins` is mandatory** for any
    non-loopback access. Lists exact origins (no wildcards). Ours is
@@ -468,7 +482,8 @@ Recent versions:
 | 1.6.23 | Add a "Use a different bot" link to the pairing screen footer, next to "Already paired earlier? Skip to dashboard". The restartTelegram path already existed but was only reachable after the 3-minute timeout. Now visible from the start, for the case where a Telegram bot token is in use by an older OpenClaw VM that's still polling — the new claw never sees `/start` because the old one grabs it first. |
 | 1.6.24 | Docs refresh after the v1.6.0-v1.6.23 functional work: README's "What you get" / "What the script does" / "After deploy" sections now describe the actual current flow (ADC step, in-wizard gog OAuth with paste-the-redirect-URL, the URL-fragment dashboard token). CLAUDE.md §1, §2 (flow diagram), and §9 (open work) updated — §9 stops claiming the wizard "directs the user to the OpenClaw dashboard's gog skill" since v1.6.14+ does the whole flow in our own UI. |
 | 1.6.25 | README Prerequisites rewritten to (1) recommend a NEW Google account explicitly — fresh trial eligibility, blank-slate playground, and isolated OAuth scopes from your personal account — and (2) make the Cloud Billing account terminology explicit instead of leaving it implicit in "free trial activated". |
-| 1.6.26 | **Self-review fixes: dashboard-readiness check moved from the VM (which can't reach its own external IP — GCP has no hairpin NAT, so the gate never passed) to a client-side browser probe; removed the broken "open over HTTP" fallback (Control UI can't run over HTTP); only Telegram getMe 401 hard-rejects a token (429/5xx now soft) via new testable telegram.js + 4 unit tests; bot-info cache moved out of ~/.openclaw; README + Google panel recommend a dedicated Chrome profile for the deploy account.** ← current |
+| 1.6.26 | **Self-review fixes: dashboard-readiness check moved from the VM (which can't reach its own external IP — GCP has no hairpin NAT, so the gate never passed) to a client-side browser probe; removed the broken "open over HTTP" fallback (Control UI can't run over HTTP); only Telegram getMe 401 hard-rejects a token (429/5xx now soft) via new testable telegram.js + 4 unit tests; bot-info cache moved out of ~/.openclaw; README + Google panel recommend a dedicated Chrome profile for the deploy account.** |
+| 1.6.27 | **Fix "All models rate-limited" on first message: force `quota_project_id` onto the shipped authorized_user ADC (startup.sh jq-injects it; gateway unit also sets `GOOGLE_CLOUD_QUOTA_PROJECT`). Root cause was a missing quota project, not the $300 credit. See gotcha 2d.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.

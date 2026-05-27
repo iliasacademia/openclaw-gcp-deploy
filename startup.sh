@@ -117,10 +117,26 @@ fi
 # Vertex call returns "No API key found for provider google-vertex".
 if [ -s "$ADC_STAGING" ]; then
   mkdir -p /home/openclaw/.config/gcloud
-  mv "$ADC_STAGING" /home/openclaw/.config/gcloud/application_default_credentials.json
+  ADC_DEST=/home/openclaw/.config/gcloud/application_default_credentials.json
+  mv "$ADC_STAGING" "$ADC_DEST"
+
+  # CRITICAL: authorized_user ADC needs a quota project, or Vertex AI can't
+  # attribute per-minute quota and returns 429 RESOURCE_EXHAUSTED on the very
+  # first request (looks like "all models rate-limited" in OpenClaw). gcloud's
+  # `application-default login` does NOT set one, and deploy.sh ships the file
+  # as-is, so we force it to THIS project here. Without this the bot fails
+  # immediately even with the full $300 credit untouched.
+  if jq --arg p "$PROJECT_ID" '.quota_project_id=$p' "$ADC_DEST" > "${ADC_DEST}.tmp" 2>/dev/null; then
+    mv "${ADC_DEST}.tmp" "$ADC_DEST"
+    echo "ADC quota_project_id set to ${PROJECT_ID}"
+  else
+    rm -f "${ADC_DEST}.tmp"
+    echo "WARN: could not set quota_project_id on ADC (jq failed) — Vertex may rate-limit"
+  fi
+
   chown -R openclaw:openclaw /home/openclaw/.config
-  chmod 600 /home/openclaw/.config/gcloud/application_default_credentials.json
-  echo "ADC installed at /home/openclaw/.config/gcloud/application_default_credentials.json"
+  chmod 600 "$ADC_DEST"
+  echo "ADC installed at ${ADC_DEST}"
 else
   echo "WARN: no ADC payload staged — Vertex AI auth will fail"
 fi
@@ -428,6 +444,7 @@ TimeoutStartSec=120
 Environment=HOME=/home/openclaw
 Environment=GOOGLE_CLOUD_PROJECT=${PROJECT_ID}
 Environment=GOOGLE_CLOUD_LOCATION=global
+Environment=GOOGLE_CLOUD_QUOTA_PROJECT=${PROJECT_ID}
 Environment=GOG_KEYRING_PASSWORD=${GOG_KEYRING}
 Environment=OPENCLAW_NO_RESPAWN=1
 
