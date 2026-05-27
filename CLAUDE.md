@@ -7,7 +7,7 @@
 > decision, gotcha discovered, version bumped), update the relevant
 > section here too.
 
-**Current version:** setup-server `1.6.29` · **Last reviewed:** 2026-05-23
+**Current version:** setup-server `1.6.30` · **Last reviewed:** 2026-05-23
 
 **Repo:** [github.com/iliasacademia/openclaw-gcp-deploy](https://github.com/iliasacademia/openclaw-gcp-deploy)
 
@@ -35,8 +35,10 @@ no CLI commands.** The one user-driven interactive step (Google OAuth
 for ADC) is wrapped inside `deploy.sh` itself via `expect`, with a
 labeled "Paste verification code here" prompt.
 
-Vertex AI is the LLM brain (Gemini 2.5 Pro — GA, dedicated quota; see §5 2e
-for why we moved off the 3.1 Pro preview). OpenClaw 2026.5.20's
+Vertex AI is the LLM brain: primary `gemini-3.1-pro-preview` with automatic
+fallback to GA `gemini-2.5-pro` then `gemini-2.5-flash` (see §5 2e — best
+model when Vertex's preview pool is free, reliable GA models when it's
+throttled). OpenClaw 2026.5.20's
 google-vertex provider requires `authorized_user` ADC (the GCE
 metadata-server service-account credentials are not honored — see §5
 #2c), so the deploy ships the user's `~/.config/gcloud/application_default_credentials.json`
@@ -269,15 +271,24 @@ In rough order of how confusing they were when first encountered:
     `gemini-3.1-pro` to switch to (a bare id would 404; OpenClaw's
     normalization to `-preview` is correct, not a bug). The newest GA family
     is **2.5**, which gets dedicated per-project quota instead of the shared
-    pool. So the default is now `primary: google-vertex/gemini-2.5-pro`,
-    `fallbacks: [google-vertex/gemini-2.5-flash]`. Both are GA, both pass
-    through to Vertex unchanged (no normalization alias). 2.5 Pro is a strong
-    agentic model — a notch below 3.1 Pro but vastly more reliable. Chasing
-    a *newer* model (3.5 Flash, etc.) is the wrong direction: newer = more
-    likely preview = more contended. When Google promotes a Gemini 3.x to GA,
-    revisit. Validate any model id with
+    pool. v1.6.29 made the chain pure-GA (`2.5-pro` → `2.5-flash`).
+    **Final default (v1.6.30), after the user tested both live and got good
+    replies either way:** `primary: gemini-3.1-pro-preview`, `fallbacks:
+    [gemini-2.5-pro, gemini-2.5-flash]`. This gives the strongest model when
+    the preview pool is free and silently drops to GA 2.5 Pro when 3.1 is
+    throttled — best quality with a reliable floor. The failover does add
+    latency on a throttled message (OpenClaw must attempt 3.1, get the 429,
+    then fail over — ~11-70s in the logs), but OpenClaw benches a
+    rate-limited model briefly so repeated messages use the fallback
+    directly. All three ids pass through to Vertex unchanged (no
+    normalization alias). Chasing a *newer* model (3.5 Flash, etc.) is the
+    wrong direction: newer = more likely preview = more contended. When
+    Google promotes a Gemini 3.x to GA, make it primary. Validate any model
+    id with
     `openclaw infer model run --model google-vertex/<id> --prompt "ping" --json`
-    before configuring it.
+    — BUT note that CLI path uses auth-profiles.json, not the gateway's ADC,
+    so it can falsely report "No API key"; the real test is messaging the
+    bot (gateway uses the ADC at ~/.config/gcloud/...).
 
 3. **`gateway.controlUi.allowedOrigins` is mandatory** for any
    non-loopback access. Lists exact origins (no wildcards). Ours is
@@ -291,7 +302,7 @@ In rough order of how confusing they were when first encountered:
    $HOME**. To make openclaw look in `/home/openclaw/.openclaw/openclaw.json`,
    pass `env HOME=/home/openclaw` explicitly.
 
-6. **Default model is `google-vertex/gemini-2.5-pro`** (GA, dedicated quota)
+6. **Default model: primary `google-vertex/gemini-3.1-pro-preview`, fallbacks `gemini-2.5-pro` then `gemini-2.5-flash`** (best model when free, GA fallback)
    as of v1.6.29, fallback `gemini-2.5-flash`, region `global`. We previously
    used `gemini-3.1-pro-preview` but it's preview-only with shared quota and
    throttled in practice (see 2e). `gemini-2.5-pro`/`gemini-2.5-flash` have no
@@ -513,7 +524,8 @@ Recent versions:
 | 1.6.26 | **Self-review fixes: dashboard-readiness check moved from the VM (which can't reach its own external IP — GCP has no hairpin NAT, so the gate never passed) to a client-side browser probe; removed the broken "open over HTTP" fallback (Control UI can't run over HTTP); only Telegram getMe 401 hard-rejects a token (429/5xx now soft) via new testable telegram.js + 4 unit tests; bot-info cache moved out of ~/.openclaw; README + Google panel recommend a dedicated Chrome profile for the deploy account.** |
 | 1.6.27 | Fix "All models rate-limited" on first message: force `quota_project_id` onto the shipped authorized_user ADC (startup.sh jq-injects it; gateway unit also sets `GOOGLE_CLOUD_QUOTA_PROJECT`). Root cause was a missing quota project, not the $300 credit. See gotcha 2d. |
 | 1.6.28 | Add Flash fallbacks (`gemini-3.1-flash-preview`, `gemini-3.1-flash-lite-preview`) to `agents.defaults.model`. The Pro preview model shares a Vertex capacity pool across customers and returns intermittent 429 RESOURCE_EXHAUSTED even with quota_project set; with no fallback (`next=none` in model-fallback logs) OpenClaw surfaced the error. Now it transparently drops to Flash when Pro is throttled. See gotcha 2e.** |
-| 1.6.29 | **Switch default model to GA `gemini-2.5-pro` (+ `gemini-2.5-flash` fallback). Confirmed no GA Gemini 3.x exists on Vertex — it's all preview/shared-quota, the throttling source. 2.5 is GA with dedicated quota: reliable agentic brain. README + startup.sh updated. See gotcha 2e.** ← current |
+| 1.6.29 | **Switch default model to GA `gemini-2.5-pro` (+ `gemini-2.5-flash` fallback). Confirmed no GA Gemini 3.x exists on Vertex — it's all preview/shared-quota, the throttling source. 2.5 is GA with dedicated quota: reliable agentic brain. README + startup.sh updated. See gotcha 2e.** |
+| 1.6.30 | **Default model chain finalized after live testing: primary `gemini-3.1-pro-preview` → fallback `gemini-2.5-pro` → `gemini-2.5-flash`. Best model when Vertex's preview pool is free, GA models (dedicated quota) when it's throttled. README headline restored to 3.1 Pro w/ fallback note.** ← current |
 
 Browse the full commit history with `git log --oneline` from the repo
 root.

@@ -4,7 +4,7 @@ Deploy [OpenClaw](https://openclaw.ai) on Google Cloud in ~5 minutes with a sing
 
 **What you get:**
 - OpenClaw running on a dedicated GCP VM (Debian 13, n2-standard-2)
-- Gemini 2.5 Pro via Vertex AI — billed to your $300 GCP free trial, no separate API key
+- Gemini 3.1 Pro via Vertex AI (auto-fallback to Gemini 2.5 Pro when the preview pool is busy) — billed to your $300 GCP free trial, no separate API key
 - A guided web wizard for Telegram bot pairing
 - Optional in-wizard Google sign-in for Gmail / Drive / Calendar access (the agent can read your inbox, save research notes to Docs/Sheets, manage Calendar)
 - HTTPS-ready OpenClaw dashboard at a `<ip>.sslip.io` subdomain (auto Let's Encrypt cert)
@@ -84,7 +84,7 @@ Press Enter. The script takes about 5-7 minutes total. The **first time you ever
 
 3. **Step 2 of 2 — Pair your account.** Click "Open my bot in Telegram", send `/start` to the bot. Within a few seconds the wizard shows a card with your name and a one-click Approve button.
 
-4. **Done screen.** You see "You're all set!" with a link to the OpenClaw dashboard (HTTPS, via the sslip.io / Let's Encrypt cert auto-fetched in the background). Send your bot a message on Telegram — it replies via Vertex AI / Gemini 2.5 Pro. First reply may take a few seconds while the model warms up.
+4. **Done screen.** You see "You're all set!" with a link to the OpenClaw dashboard (HTTPS, via the sslip.io / Let's Encrypt cert auto-fetched in the background). Send your bot a message on Telegram — it replies via Vertex AI / Gemini 3.1 Pro (or 2.5 Pro if 3.1 is busy). First reply may take a few seconds while the model warms up.
 
 5. **Optional — Connect Google.** From the Done screen, click "Connect Google" if you want your assistant to read Gmail, search Drive, save research notes into new Docs / Sheets, or manage Calendar. The wizard walks you through:
    - Configuring the OAuth consent screen in Google Cloud Console (the wizard tells you exactly what to type and click).
@@ -101,7 +101,7 @@ Bookmark the dashboard URL **with its `#token=` fragment** — that token is the
 | Resource | Cost |
 |----------|------|
 | n2-standard-2 VM | ~$0.10/hr (~$2.40/day) |
-| Vertex AI (Gemini 2.5 Pro) | Pay per token — low for personal use |
+| Vertex AI (Gemini 3.1 Pro / 2.5 Pro) | Pay per token — low for personal use |
 | **$300 free credits** | Covers months of testing |
 
 To avoid charges after testing, run `bash cleanup.sh` from the same Cloud Shell session, or delete the project at the [GCP Console](https://console.cloud.google.com/cloud-resource-manager).
