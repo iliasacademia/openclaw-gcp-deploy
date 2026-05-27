@@ -13,14 +13,14 @@ Deploy [OpenClaw](https://openclaw.ai) on Google Cloud in ~5 minutes with a sing
 
 ## Prerequisites
 
-1. **A new Google account** — [create one here](https://accounts.google.com/signup). We strongly recommend creating a fresh account rather than using your everyday Gmail because:
+1. **A new Google account** — [create one here](https://accounts.google.com/signup). I strongly recommend creating a fresh account rather than using your everyday Gmail because:
    - The $300 Google Cloud free-trial credit only applies the first time a billing profile signs up — a fresh account keeps you eligible.
    - It's a blank, low-risk playground: even if you grant the agent access to "your Gmail" later, that inbox is brand new and contains no personal mail.
    - When the agent is given access to your Drive, Calendar, etc., those are this fresh account's — your personal account stays untouched.
 
-2. **Two-step verification enabled on that new account** — [turn it on here](https://myaccount.google.com/signinoptions/twosv). Google requires two-step verification before you can create the OAuth client we'll need later to give the agent access to Gmail, Drive, and Calendar. Easier to do this now than to be blocked partway through.
+2. **Two-step verification enabled on that new account** — [turn it on here](https://myaccount.google.com/signinoptions/twosv). Google requires two-step verification before you can create the OAuth client you'll need later to give the agent access to Gmail, Drive, and Calendar. Easier to do this now than to be blocked partway through.
 
-3. **A Google Cloud Billing account with the free trial activated** — [start here](https://console.cloud.google.com/freetrial). Signing up gives you all of the following at once, which is everything our `deploy.sh` needs to create your project:
+3. **A Google Cloud Billing account with the free trial activated** — [start here](https://console.cloud.google.com/freetrial). Signing up gives you all of the following at once, which is everything my `deploy.sh` needs to create your project:
    - **$300 in free credits** valid for 90 days (covers compute + Vertex AI tokens — comfortably enough for personal use)
    - A linked **Cloud Billing account** (this is what `deploy.sh` attaches to the new project so VMs can actually run)
    - A credit card is required to verify identity — you won't be charged unless you explicitly upgrade to the paid tier after the trial
